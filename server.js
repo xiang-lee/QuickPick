@@ -273,9 +273,13 @@ async function callAiResult(context) {
     "Use the user's location to explain price or availability differences.",
     "Use the user's additional context if provided.",
     "Use baseline_scores as the starting point and adjust if needed.",
+    "Be detailed but concise.",
+    "Ranking reasons must be 2-3 sentences.",
+    "Key reasons: 4-6 items, each 1-2 sentences.",
+    "Tradeoff map: 1-2 sentences per item.",
+    "Actions: 3-5 items, each one sentence.",
     `All user-facing text must be in ${languageLabel}.`,
-    "Explain using short, scenario-based language without jargon.",
-    "Keep all text short: <= 18 words per sentence.",
+    "Explain using scenario-based language without jargon.",
   ].join("\n");
 
   const userPrompt = JSON.stringify({
@@ -295,14 +299,14 @@ async function callAiResult(context) {
         {
           name: "candidate name",
           score: "0-100",
-          reason: "short reason tied to additional_context",
+          reason: "2-3 sentence reason tied to additional_context",
         },
       ],
       ranking: [
         {
           name: "candidate name",
           score: "0-100",
-          reason: "short reason tied to answers",
+          reason: "2-3 sentence reason tied to answers",
         },
       ],
       key_reasons: ["string"],
@@ -670,10 +674,10 @@ function normalizeResultOutput(aiData, context, fallbackRanking) {
     confidence: clampNumber(aiData.confidence, 0, 1, 0.75),
     question: null,
     ranking,
-    key_reasons: normalizeStringList(aiData.key_reasons, 5),
+    key_reasons: normalizeStringList(aiData.key_reasons, 6),
     tradeoff_map: normalizeTradeoffs(aiData.tradeoff_map, context.candidates, context.language),
     counterfactuals: normalizeCounterfactuals(aiData.counterfactuals, context.candidates, context.language),
-    actions: normalizeStringList(aiData.actions, 5),
+    actions: normalizeStringList(aiData.actions, 6),
     third_option: normalizeThirdOption(aiData.third_option),
   };
 }
