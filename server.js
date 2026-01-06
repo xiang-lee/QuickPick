@@ -128,6 +128,7 @@ app.post("/api/result", async (req, res) => {
     additionalInfo,
     candidates,
     answers,
+    scores,
   };
 
   const ranking = buildRankingFromScores(scores, candidates);
@@ -139,7 +140,7 @@ app.post("/api/result", async (req, res) => {
   }
 
   try {
-    const aiData = await callAiResult(context, ranking);
+    const aiData = await callAiResult(context);
     const normalized = normalizeResultOutput(aiData, context, ranking);
     res.json(normalized);
   } catch (error) {
@@ -240,13 +241,13 @@ async function callAiPlan(context) {
   });
 }
 
-async function callAiResult(context, ranking) {
+async function callAiResult(context) {
   const systemPrompt = [
     "You are QuickPick, an explainable recommendation engine.",
     "Return JSON only. No markdown or commentary.",
-    "Use the provided ranking order. Do not change the order.",
     "Use the user's location to explain price or availability differences.",
     "Use the user's additional context if provided.",
+    "Use baseline_scores as the starting point and adjust if needed.",
     "Explain using short, scenario-based language without jargon.",
     "Keep all text short: <= 18 words per sentence.",
   ].join("\n");
@@ -255,11 +256,21 @@ async function callAiResult(context, ranking) {
     category: context.category,
     location: context.location || "unspecified",
     additional_context: context.additionalInfo || "none",
+    baseline_scores: context.candidates.map((name) => ({
+      name,
+      score: clampNumber(context.scores[name], 0, 100, 50),
+    })),
     candidates: context.candidates,
     answers: context.answers,
-    ranking,
     output_schema: {
       confidence: "number between 0 and 1",
+      adjusted_scores: [
+        {
+          name: "candidate name",
+          score: "0-100",
+          reason: "short reason tied to additional_context",
+        },
+      ],
       ranking: [
         {
           name: "candidate name",
@@ -601,11 +612,34 @@ function normalizeAiOutput(aiData, context) {
 }
 
 function normalizeResultOutput(aiData, context, fallbackRanking) {
+  const adjustedScores = normalizeAdjustedScores(aiData.adjusted_scores, context.candidates);
+  let ranking = normalizeRanking(aiData.ranking || fallbackRanking, context.candidates);
+
+  if (adjustedScores && adjustedScores.length) {
+    const reasonMap = new Map();
+    if (Array.isArray(aiData.ranking)) {
+      aiData.ranking.forEach((item) => {
+        const name = sanitizeText(item && item.name ? item.name : "").toLowerCase();
+        if (name) {
+          reasonMap.set(name, sanitizeText(item && item.reason ? item.reason : ""));
+        }
+      });
+    }
+    ranking = adjustedScores
+      .slice()
+      .sort((a, b) => b.score - a.score)
+      .map((item) => ({
+        name: item.name,
+        score: item.score,
+        reason: reasonMap.get(item.name.toLowerCase()) || "",
+      }));
+  }
+
   return {
     status: "final",
     confidence: clampNumber(aiData.confidence, 0, 1, 0.75),
     question: null,
-    ranking: normalizeRanking(aiData.ranking || fallbackRanking, context.candidates),
+    ranking,
     key_reasons: normalizeStringList(aiData.key_reasons, 5),
     tradeoff_map: normalizeTradeoffs(aiData.tradeoff_map, context.candidates),
     counterfactuals: normalizeCounterfactuals(aiData.counterfactuals, context.candidates),
@@ -711,6 +745,28 @@ function normalizeRanking(ranking, candidates) {
     }
   });
 
+  return mapped;
+}
+
+function normalizeAdjustedScores(list, candidates) {
+  if (!Array.isArray(list)) {
+    return null;
+  }
+  const mapped = list.map((item) => ({
+    name: sanitizeText(item && item.name ? item.name : ""),
+    score: clampNumber(item && item.score, 0, 100, 50),
+  })).filter((item) => item.name);
+
+  if (!mapped.length) {
+    return null;
+  }
+
+  const seen = new Set(mapped.map((item) => item.name.toLowerCase()));
+  candidates.forEach((candidate) => {
+    if (!seen.has(candidate.toLowerCase())) {
+      mapped.push({ name: candidate, score: 50 });
+    }
+  });
   return mapped;
 }
 
