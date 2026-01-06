@@ -17,6 +17,44 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
+app.post("/api/session", async (req, res) => {
+  const payload = req.body || {};
+  const category = sanitizeText(payload.category || "");
+  const candidates = normalizeCandidates(payload.candidates || []);
+  const minQuestions = Number.isInteger(payload.minQuestions) ? payload.minQuestions : 3;
+  const maxQuestions = Number.isInteger(payload.maxQuestions) ? payload.maxQuestions : 10;
+
+  if (candidates.length < 3 || candidates.length > 6) {
+    return res.status(400).json({
+      error: "Please provide between 3 and 6 candidates.",
+    });
+  }
+
+  const context = {
+    category: category || "general consumer product",
+    candidates,
+    minQuestions,
+    maxQuestions,
+  };
+
+  if (!AI_TOKEN) {
+    return res.json(buildFallbackPlan(context, {
+      warning: "Missing AI token. Returning fallback plan.",
+    }));
+  }
+
+  try {
+    const aiData = await callAiPlan(context);
+    const normalized = normalizePlan(aiData, context);
+    res.json({ status: "ready", plan: normalized });
+  } catch (error) {
+    console.error("AI plan failed:", error);
+    res.json(buildFallbackPlan(context, {
+      warning: "AI request failed. Returning fallback plan.",
+    }));
+  }
+});
+
 app.post("/api/next", async (req, res) => {
   const payload = req.body || {};
   const category = sanitizeText(payload.category || "");
@@ -65,6 +103,45 @@ app.post("/api/next", async (req, res) => {
   }
 });
 
+app.post("/api/result", async (req, res) => {
+  const payload = req.body || {};
+  const category = sanitizeText(payload.category || "");
+  const candidates = normalizeCandidates(payload.candidates || []);
+  const answers = Array.isArray(payload.answers) ? payload.answers.map(normalizeAnswer) : [];
+  const scores = normalizeScores(payload.scores || {}, candidates);
+
+  if (candidates.length < 3 || candidates.length > 6) {
+    return res.status(400).json({
+      error: "Please provide between 3 and 6 candidates.",
+    });
+  }
+
+  const context = {
+    category: category || "general consumer product",
+    candidates,
+    answers,
+  };
+
+  const ranking = buildRankingFromScores(scores, candidates);
+
+  if (!AI_TOKEN) {
+    return res.json(buildResultFallback(context, ranking, {
+      warning: "Missing AI token. Returning fallback result.",
+    }));
+  }
+
+  try {
+    const aiData = await callAiResult(context, ranking);
+    const normalized = normalizeResultOutput(aiData, context, ranking);
+    res.json(normalized);
+  } catch (error) {
+    console.error("AI result failed:", error);
+    res.json(buildResultFallback(context, ranking, {
+      warning: "AI request failed. Returning fallback result.",
+    }));
+  }
+});
+
 function sanitizeText(value) {
   if (typeof value !== "string") {
     return "";
@@ -103,6 +180,177 @@ function normalizeAnswer(answer) {
     value: sanitizeText(answer.value || ""),
     dimension: sanitizeText(answer.dimension || ""),
   };
+}
+
+async function callAiPlan(context) {
+  const systemPrompt = [
+    "You are QuickPick Plan Builder.",
+    "Return JSON only. No markdown or commentary.",
+    "Create a full question plan so the UI can ask without waiting.",
+    "Use candidate names exactly as provided.",
+    "Each option must include impact_scores for every candidate as integers between -12 and 12.",
+    "Questions must be short, scenario-based, and high impact.",
+    "Provide between minQuestions and maxQuestions, prefer 5-7 if allowed.",
+    "Keep all text short: <= 18 words per sentence.",
+  ].join("\n");
+
+  const userPrompt = JSON.stringify({
+    category: context.category,
+    candidates: context.candidates,
+    minQuestions: context.minQuestions,
+    maxQuestions: context.maxQuestions,
+    output_schema: {
+      base_scores: [{ name: "candidate name", score: "0-100" }],
+      questions: [
+        {
+          id: "string",
+          text: "string",
+          dimension: "string",
+          info_gain_reason: "string",
+          options: [
+            {
+              id: "string",
+              label: "string",
+              value: "string",
+              impact_hint: "string",
+              impact_scores: {
+                "candidate name": "integer -12..12",
+              },
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  return callAiJson({
+    systemPrompt,
+    userPrompt,
+    maxTokens: 1400,
+  });
+}
+
+async function callAiResult(context, ranking) {
+  const systemPrompt = [
+    "You are QuickPick, an explainable recommendation engine.",
+    "Return JSON only. No markdown or commentary.",
+    "Use the provided ranking order. Do not change the order.",
+    "Explain using short, scenario-based language without jargon.",
+    "Keep all text short: <= 18 words per sentence.",
+  ].join("\n");
+
+  const userPrompt = JSON.stringify({
+    category: context.category,
+    candidates: context.candidates,
+    answers: context.answers,
+    ranking,
+    output_schema: {
+      confidence: "number between 0 and 1",
+      ranking: [
+        {
+          name: "candidate name",
+          score: "0-100",
+          reason: "short reason tied to answers",
+        },
+      ],
+      key_reasons: ["string"],
+      tradeoff_map: [
+        {
+          dimension: "string",
+          winner: "candidate name",
+          why: "string",
+        },
+      ],
+      counterfactuals: [
+        {
+          toggle: "string",
+          change: "string",
+          new_top: "candidate name",
+          new_ranking: [
+            {
+              name: "candidate name",
+              score: "0-100",
+            },
+          ],
+        },
+      ],
+      actions: ["string"],
+      third_option: {
+        title: "string",
+        why: "string",
+        criteria: "string",
+      },
+    },
+  });
+
+  return callAiJson({
+    systemPrompt,
+    userPrompt,
+    maxTokens: 1200,
+  });
+}
+
+async function callAiJson({ systemPrompt, userPrompt, maxTokens }) {
+  const debug = process.env.DEBUG_AI === "1";
+  const fallbackModel = process.env.AI_BUILDER_FALLBACK_MODEL || "grok-4-fast";
+  const modelsToTry = AI_MODEL && AI_MODEL !== fallbackModel
+    ? [AI_MODEL, fallbackModel]
+    : [AI_MODEL];
+
+  let lastError = null;
+
+  for (const model of modelsToTry) {
+    try {
+      const response = await fetch(`${AI_BASE}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${AI_TOKEN}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.4,
+          max_tokens: maxTokens,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(`AI request failed: ${response.status} ${detail}`);
+      }
+
+      const data = await response.json();
+      const content = data && data.choices && data.choices[0] && data.choices[0].message
+        ? data.choices[0].message.content
+        : "";
+
+      if (debug) {
+        console.log("AI model:", model);
+        console.log("AI message:", data && data.choices && data.choices[0] ? data.choices[0].message : null);
+        console.log("AI raw content:", typeof content, String(content).slice(0, 500));
+      }
+
+      const cleaned = stripJsonFences(String(content));
+      const parsed = safeJsonParse(cleaned);
+      if (!parsed) {
+        throw new Error("AI response was not valid JSON.");
+      }
+
+      return parsed;
+    } catch (error) {
+      lastError = error;
+      if (!shouldFallback(error) || model === fallbackModel) {
+        break;
+      }
+    }
+  }
+
+  throw lastError || new Error("AI request failed.");
 }
 
 async function callAiDecision(context) {
@@ -285,6 +533,34 @@ function shouldFallback(error) {
   return message.includes("valid JSON");
 }
 
+function normalizeScores(scores, candidates) {
+  const normalized = {};
+  candidates.forEach((candidate) => {
+    normalized[candidate] = 50;
+  });
+
+  if (scores && typeof scores === "object") {
+    Object.keys(scores).forEach((key) => {
+      const candidate = candidates.find((name) => name.toLowerCase() === key.toLowerCase());
+      if (!candidate) {
+        return;
+      }
+      normalized[candidate] = clampNumber(scores[key], 0, 100, normalized[candidate]);
+    });
+  }
+
+  return normalized;
+}
+
+function buildRankingFromScores(scores, candidates) {
+  const entries = candidates.map((candidate) => ({
+    name: candidate,
+    score: clampNumber(scores[candidate], 0, 100, 50),
+    reason: "",
+  }));
+  return entries.sort((a, b) => b.score - a.score);
+}
+
 function normalizeAiOutput(aiData, context) {
   const confidence = clampNumber(aiData.confidence, 0, 1, 0.5);
   const shouldStop = typeof aiData.should_stop === "boolean"
@@ -301,6 +577,20 @@ function normalizeAiOutput(aiData, context) {
     question,
     ranking: normalizedRanking,
     key_reasons: normalizeStringList(aiData.key_reasons, 4),
+    tradeoff_map: normalizeTradeoffs(aiData.tradeoff_map, context.candidates),
+    counterfactuals: normalizeCounterfactuals(aiData.counterfactuals, context.candidates),
+    actions: normalizeStringList(aiData.actions, 5),
+    third_option: normalizeThirdOption(aiData.third_option),
+  };
+}
+
+function normalizeResultOutput(aiData, context, fallbackRanking) {
+  return {
+    status: "final",
+    confidence: clampNumber(aiData.confidence, 0, 1, 0.75),
+    question: null,
+    ranking: normalizeRanking(aiData.ranking || fallbackRanking, context.candidates),
+    key_reasons: normalizeStringList(aiData.key_reasons, 5),
     tradeoff_map: normalizeTradeoffs(aiData.tradeoff_map, context.candidates),
     counterfactuals: normalizeCounterfactuals(aiData.counterfactuals, context.candidates),
     actions: normalizeStringList(aiData.actions, 5),
@@ -334,6 +624,53 @@ function buildFallbackResponse(context, meta) {
   };
 }
 
+function buildResultFallback(context, ranking, meta) {
+  return {
+    status: "final",
+    confidence: 0.6,
+    question: null,
+    ranking,
+    key_reasons: [
+      "Using a fallback path while AI is unavailable.",
+      "Ranking is based on your answer impacts.",
+    ],
+    tradeoff_map: buildFallbackTradeoffs(context.candidates),
+    counterfactuals: buildFallbackCounterfactuals(context.candidates),
+    actions: [
+      "Shortlist the top two and compare hands-on if possible.",
+      "Check warranty length and service coverage in your area.",
+      "Look for bundles or seasonal pricing changes.",
+    ],
+    third_option: null,
+    warning: meta && meta.warning ? meta.warning : undefined,
+  };
+}
+
+function buildFallbackPlan(context, meta) {
+  const questions = [];
+  const targetCount = Math.min(context.maxQuestions, Math.max(context.minQuestions, 5));
+  for (let i = 0; i < targetCount; i += 1) {
+    const base = getFallbackQuestion(i, context.candidates);
+    questions.push(applyFallbackImpacts(base, context.candidates, i));
+  }
+  return {
+    status: "ready",
+    plan: {
+      base_scores: context.candidates.map((name) => ({ name, score: 50 })),
+      questions,
+    },
+    warning: meta && meta.warning ? meta.warning : undefined,
+  };
+}
+
+function applyFallbackImpacts(question, candidates, seed) {
+  const options = question.options.map((option, index) => ({
+    ...option,
+    impact_scores: buildImpactScores(null, candidates, seed + index),
+  }));
+  return { ...question, options };
+}
+
 function normalizeRanking(ranking, candidates) {
   const baseScores = candidates.map((name, index) => ({
     name,
@@ -359,6 +696,114 @@ function normalizeRanking(ranking, candidates) {
   });
 
   return mapped;
+}
+
+function normalizePlan(plan, context) {
+  const baseScores = normalizeBaseScores(plan && plan.base_scores, context.candidates);
+  const rawQuestions = Array.isArray(plan && plan.questions) ? plan.questions : [];
+  const questions = rawQuestions
+    .map((question, index) => normalizePlanQuestion(question, context, index))
+    .filter(Boolean);
+
+  const targetCount = Math.min(context.maxQuestions, Math.max(context.minQuestions, 5));
+  while (questions.length < targetCount) {
+    const fallback = applyFallbackImpacts(
+      getFallbackQuestion(questions.length, context.candidates),
+      context.candidates,
+      questions.length,
+    );
+    questions.push(fallback);
+  }
+
+  return {
+    base_scores: baseScores,
+    questions: questions.slice(0, context.maxQuestions),
+  };
+}
+
+function normalizePlanQuestion(question, context, index) {
+  if (!question || typeof question !== "object") {
+    return null;
+  }
+
+  const options = Array.isArray(question.options) ? question.options.slice(0, 5) : [];
+  if (options.length < 2) {
+    return applyFallbackImpacts(
+      getFallbackQuestion(index, context.candidates),
+      context.candidates,
+      index,
+    );
+  }
+
+  const normalizedOptions = options.map((option, optionIndex) => ({
+    id: sanitizeText(option.id || `o${index + 1}-${optionIndex + 1}`),
+    label: sanitizeText(option.label || ""),
+    value: sanitizeText(option.value || ""),
+    impact_hint: sanitizeText(option.impact_hint || ""),
+    impact_scores: buildImpactScores(option.impact_scores, context.candidates, optionIndex),
+  })).filter((option) => option.label);
+
+  if (normalizedOptions.length < 2) {
+    return applyFallbackImpacts(
+      getFallbackQuestion(index, context.candidates),
+      context.candidates,
+      index,
+    );
+  }
+
+  return {
+    id: sanitizeText(question.id || `q${index + 1}`),
+    text: sanitizeText(question.text || ""),
+    dimension: sanitizeText(question.dimension || ""),
+    info_gain_reason: sanitizeText(question.info_gain_reason || ""),
+    options: normalizedOptions,
+  };
+}
+
+function normalizeBaseScores(baseScores, candidates) {
+  const scores = candidates.map((name) => ({ name, score: 50 }));
+  if (!Array.isArray(baseScores)) {
+    return scores;
+  }
+  const mapped = baseScores.map((item) => ({
+    name: sanitizeText(item && item.name ? item.name : ""),
+    score: clampNumber(item && item.score, 0, 100, 50),
+  })).filter((item) => item.name);
+  const seen = new Set(mapped.map((item) => item.name.toLowerCase()));
+  candidates.forEach((candidate) => {
+    if (!seen.has(candidate.toLowerCase())) {
+      mapped.push({ name: candidate, score: 50 });
+    }
+  });
+  return mapped;
+}
+
+function buildImpactScores(impactScores, candidates, fallbackIndex) {
+  const normalized = {};
+  let hasValues = false;
+
+  candidates.forEach((candidate, index) => {
+    let score = 0;
+    if (impactScores && typeof impactScores === "object") {
+      const key = Object.keys(impactScores).find((name) => name.toLowerCase() === candidate.toLowerCase());
+      if (key) {
+        score = clampNumber(impactScores[key], -12, 12, 0);
+      }
+    }
+    if (score !== 0) {
+      hasValues = true;
+    }
+    normalized[candidate] = score;
+  });
+
+  if (!hasValues) {
+    const favored = candidates[fallbackIndex % candidates.length];
+    candidates.forEach((candidate, index) => {
+      normalized[candidate] = candidate === favored ? 8 : index === 0 ? 2 : 0;
+    });
+  }
+
+  return normalized;
 }
 
 function normalizeQuestion(question, context, shouldStop) {

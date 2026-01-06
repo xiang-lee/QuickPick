@@ -2,11 +2,14 @@ const state = {
   category: "",
   candidates: [],
   answers: [],
-  previousQuestions: [],
   questionCount: 0,
   minQuestions: 3,
   maxQuestions: 10,
   currentQuestion: null,
+  questions: [],
+  totalQuestions: 0,
+  scores: {},
+  plan: null,
   ranking: [],
   confidence: 0,
 };
@@ -88,55 +91,123 @@ function showPanel(panel) {
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-async function fetchNext() {
-  elements.options.innerHTML = "";
-  elements.options.appendChild(createLoading());
-  elements.infoGain.textContent = "";
+async function startSession() {
+  setQuestionLoading("Building your question set...");
 
   const payload = {
     category: state.category,
     candidates: state.candidates,
-    answers: state.answers,
-    previousQuestions: state.previousQuestions,
-    questionCount: state.questionCount,
     minQuestions: state.minQuestions,
     maxQuestions: state.maxQuestions,
   };
 
-  const response = await fetch("/api/next", {
+  const response = await fetch("/api/session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
-    throw new Error("Failed to fetch question.");
+    throw new Error("Failed to build questions.");
   }
 
   const data = await response.json();
-  state.confidence = data.confidence || 0;
-  state.ranking = data.ranking || [];
+  if (!data.plan || !Array.isArray(data.plan.questions)) {
+    throw new Error("Question plan unavailable.");
+  }
+
+  state.plan = data.plan;
+  state.questions = data.plan.questions;
+  state.totalQuestions = state.questions.length;
+  state.questionCount = 0;
+  state.currentQuestion = state.questions[0] || null;
+  state.scores = initScores(data.plan.base_scores || [], state.candidates);
+  state.ranking = buildRanking(state.scores);
+  state.confidence = computeConfidence(state.ranking);
 
   renderRanking(elements.rankingList, state.ranking);
   updateConfidence();
+  renderQuestion(state.currentQuestion);
+}
 
-  if (data.status === "final") {
-    renderResults(data);
-    showPanel(elements.resultPanel);
+function setQuestionLoading(message) {
+  elements.questionText.textContent = message;
+  elements.infoGain.textContent = "";
+  elements.options.innerHTML = "";
+  elements.options.appendChild(createLoading());
+  elements.progress.textContent = "Preparing...";
+}
+
+function initScores(baseScores, candidates) {
+  const scores = {};
+  candidates.forEach((name) => {
+    scores[name] = 50;
+  });
+  baseScores.forEach((item) => {
+    const name = item && item.name ? item.name : "";
+    const match = candidates.find((candidate) => candidate.toLowerCase() === name.toLowerCase());
+    if (!match) {
+      return;
+    }
+    scores[match] = Number(item.score) || 50;
+  });
+  return scores;
+}
+
+function buildRanking(scores) {
+  const ranking = Object.keys(scores).map((name) => ({
+    name,
+    score: Math.max(0, Math.min(100, Math.round(scores[name]))),
+    reason: "",
+  }));
+  return ranking.sort((a, b) => b.score - a.score);
+}
+
+function computeConfidence(ranking) {
+  if (ranking.length < 2) {
+    return 0.5;
+  }
+  const gap = ranking[0].score - ranking[1].score;
+  const normalized = gap / 40;
+  return Math.max(0.2, Math.min(0.95, normalized));
+}
+
+function applyImpactScores(impactScores) {
+  if (!impactScores) {
     return;
   }
+  Object.keys(state.scores).forEach((candidate) => {
+    const delta = Number(impactScores[candidate]) || 0;
+    state.scores[candidate] += delta;
+    state.scores[candidate] = Math.max(0, Math.min(100, state.scores[candidate]));
+  });
+}
 
-  if (!data.question) {
-    throw new Error("No question returned.");
+async function fetchResult() {
+  setQuestionLoading("Generating your recommendation...");
+  const response = await fetch("/api/result", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      category: state.category,
+      candidates: state.candidates,
+      answers: state.answers,
+      scores: state.scores,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to build final recommendation.");
   }
 
-  state.currentQuestion = data.question;
-  state.previousQuestions.push(data.question.text);
-  renderQuestion(data.question);
+  const data = await response.json();
+  renderResults(data);
+  showPanel(elements.resultPanel);
 }
 
 function renderQuestion(question) {
-  elements.questionIndex.textContent = `Question ${state.questionCount + 1}`;
+  const current = Math.min(state.questionCount + 1, state.totalQuestions || 1);
+  elements.questionIndex.textContent = `Question ${current} of ${state.totalQuestions || 1}`;
   elements.questionText.textContent = question.text;
   elements.infoGain.textContent = question.info_gain_reason || "";
   elements.options.innerHTML = "";
@@ -150,7 +221,7 @@ function renderQuestion(question) {
     elements.options.appendChild(button);
   });
 
-  elements.progress.textContent = `Answered ${state.questionCount} of ${state.maxQuestions} max`;
+  elements.progress.textContent = `Answered ${state.questionCount} of ${state.totalQuestions || 1}`;
 }
 
 function handleAnswer(option) {
@@ -168,8 +239,20 @@ function handleAnswer(option) {
     dimension: question.dimension,
   });
 
+  applyImpactScores(option.impact_scores);
   state.questionCount += 1;
-  fetchNext().catch(showError);
+  state.ranking = buildRanking(state.scores);
+  state.confidence = computeConfidence(state.ranking);
+  renderRanking(elements.rankingList, state.ranking);
+  updateConfidence();
+
+  if (state.questionCount >= state.totalQuestions) {
+    fetchResult().catch(showError);
+    return;
+  }
+
+  state.currentQuestion = state.questions[state.questionCount];
+  renderQuestion(state.currentQuestion);
 }
 
 function renderRanking(container, ranking) {
@@ -344,9 +427,12 @@ function resetFlow() {
   state.category = "";
   state.candidates = [];
   state.answers = [];
-  state.previousQuestions = [];
   state.questionCount = 0;
   state.currentQuestion = null;
+  state.questions = [];
+  state.totalQuestions = 0;
+  state.scores = {};
+  state.plan = null;
   state.ranking = [];
   state.confidence = 0;
   elements.category.value = "";
@@ -365,12 +451,15 @@ function startFlow() {
   state.category = elements.category.value.trim();
   state.candidates = candidates;
   state.answers = [];
-  state.previousQuestions = [];
   state.questionCount = 0;
+  state.questions = [];
+  state.totalQuestions = 0;
+  state.scores = {};
+  state.plan = null;
 
   elements.formError.textContent = "";
   showPanel(elements.questionPanel);
-  fetchNext().catch(showError);
+  startSession().catch(showError);
 }
 
 function runDemo() {
