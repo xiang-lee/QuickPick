@@ -339,11 +339,32 @@ async function callAiResult(context) {
     },
   });
 
-  return callAiJson({
-    systemPrompt,
-    userPrompt,
-    maxTokens: 1200,
-  });
+  try {
+    return await callAiJson({
+      systemPrompt,
+      userPrompt,
+      maxTokens: 2000,
+    });
+  } catch (error) {
+    const compactSystemPrompt = [
+      "You are QuickPick, an explainable recommendation engine.",
+      "Return JSON only. No markdown or commentary.",
+      "Use location and additional context if provided.",
+      "Use baseline_scores as the starting point and adjust if needed.",
+      "Ranking reasons must be 1-2 sentences.",
+      "Key reasons: 3-5 items, each one sentence.",
+      "Tradeoff map: one sentence per item.",
+      "Actions: 3-4 items, each one sentence.",
+      `All user-facing text must be in ${languageLabel}.`,
+      "Use clear, simple language without jargon.",
+    ].join("\n");
+
+    return callAiJson({
+      systemPrompt: compactSystemPrompt,
+      userPrompt,
+      maxTokens: 1400,
+    });
+  }
 }
 
 async function callAiJson({ systemPrompt, userPrompt, maxTokens }) {
