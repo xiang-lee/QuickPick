@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const AI_BASE = process.env.AI_BUILDER_API_BASE || "https://space.ai-builders.com/backend";
 const AI_TOKEN = process.env.AI_BUILDER_TOKEN || "";
-const AI_MODEL = process.env.AI_BUILDER_MODEL || "gemini-3-flash-preview";
+const AI_MODEL = process.env.AI_BUILDER_MODEL || "grok-4-fast";
 
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
@@ -58,6 +58,7 @@ app.post("/api/next", async (req, res) => {
     const normalized = normalizeAiOutput(aiData, context);
     res.json(normalized);
   } catch (error) {
+    console.error("AI request failed:", error);
     res.json(buildFallbackResponse(context, {
       warning: "AI request failed. Returning fallback question.",
     }));
@@ -105,6 +106,7 @@ function normalizeAnswer(answer) {
 }
 
 async function callAiDecision(context) {
+  const debug = process.env.DEBUG_AI === "1";
   const systemPrompt = [
     "You are QuickPick, a decision engine for consumer product shortlists.",
     "Goal: ask one high impact question at a time, update ranking, and stop once confident.",
@@ -116,6 +118,7 @@ async function callAiDecision(context) {
     "- Provide tradeoff_map with 3 to 6 dimensions.",
     "- Provide 2 to 4 counterfactual toggles with alternative ranking.",
     "- If none fit, return a third_option suggestion with why and criteria.",
+    "- Keep all text short: <= 18 words per sentence; avoid extra clauses.",
     "Output JSON only. No markdown.",
   ].join("\n");
 
@@ -181,39 +184,65 @@ async function callAiDecision(context) {
     },
   });
 
-  const response = await fetch(`${AI_BASE}/v1/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${AI_TOKEN}`,
-    },
-    body: JSON.stringify({
-      model: AI_MODEL,
-      temperature: 0.4,
-      max_tokens: 900,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    }),
-  });
+  const fallbackModel = process.env.AI_BUILDER_FALLBACK_MODEL || "grok-4-fast";
+  const modelsToTry = AI_MODEL && AI_MODEL !== fallbackModel
+    ? [AI_MODEL, fallbackModel]
+    : [AI_MODEL];
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`AI request failed: ${response.status} ${detail}`);
+  let lastError = null;
+
+  for (const model of modelsToTry) {
+    try {
+      const response = await fetch(`${AI_BASE}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${AI_TOKEN}`,
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.4,
+          max_tokens: 1400,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(`AI request failed: ${response.status} ${detail}`);
+      }
+
+      const data = await response.json();
+      const content = data && data.choices && data.choices[0] && data.choices[0].message
+        ? data.choices[0].message.content
+        : "";
+
+      if (debug) {
+        console.log("AI model:", model);
+        console.log("AI message:", data && data.choices && data.choices[0] ? data.choices[0].message : null);
+        console.log("AI raw content:", typeof content, String(content).slice(0, 500));
+      }
+
+      const cleaned = stripJsonFences(String(content));
+      const parsed = safeJsonParse(cleaned);
+      if (!parsed) {
+        throw new Error("AI response was not valid JSON.");
+      }
+
+      return parsed;
+    } catch (error) {
+      lastError = error;
+      if (!shouldFallback(error) || model === fallbackModel) {
+        break;
+      }
+    }
   }
 
-  const data = await response.json();
-  const content = data && data.choices && data.choices[0] && data.choices[0].message
-    ? data.choices[0].message.content
-    : "";
-
-  const parsed = safeJsonParse(content);
-  if (!parsed) {
-    throw new Error("AI response was not valid JSON.");
-  }
-
-  return parsed;
+  throw lastError || new Error("AI request failed.");
 }
 
 function safeJsonParse(value) {
@@ -234,6 +263,26 @@ function safeJsonParse(value) {
       return null;
     }
   }
+}
+
+function stripJsonFences(value) {
+  if (typeof value !== "string") {
+    return value;
+  }
+  let output = value.trim();
+  if (output.startsWith("```")) {
+    output = output.replace(/^```(?:json)?\s*/i, "");
+    output = output.replace(/```$/i, "");
+  }
+  return output.trim();
+}
+
+function shouldFallback(error) {
+  if (!error) {
+    return false;
+  }
+  const message = typeof error === "string" ? error : error.message || "";
+  return message.includes("valid JSON");
 }
 
 function normalizeAiOutput(aiData, context) {
