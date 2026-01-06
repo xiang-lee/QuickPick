@@ -111,6 +111,7 @@ app.post("/api/result", async (req, res) => {
   const payload = req.body || {};
   const category = sanitizeText(payload.category || "");
   const location = sanitizeText(payload.location || "");
+  const additionalInfo = sanitizeText(payload.additionalInfo || "");
   const candidates = normalizeCandidates(payload.candidates || []);
   const answers = Array.isArray(payload.answers) ? payload.answers.map(normalizeAnswer) : [];
   const scores = normalizeScores(payload.scores || {}, candidates);
@@ -124,6 +125,7 @@ app.post("/api/result", async (req, res) => {
   const context = {
     category: category || "general consumer product",
     location,
+    additionalInfo,
     candidates,
     answers,
   };
@@ -244,6 +246,7 @@ async function callAiResult(context, ranking) {
     "Return JSON only. No markdown or commentary.",
     "Use the provided ranking order. Do not change the order.",
     "Use the user's location to explain price or availability differences.",
+    "Use the user's additional context if provided.",
     "Explain using short, scenario-based language without jargon.",
     "Keep all text short: <= 18 words per sentence.",
   ].join("\n");
@@ -251,6 +254,7 @@ async function callAiResult(context, ranking) {
   const userPrompt = JSON.stringify({
     category: context.category,
     location: context.location || "unspecified",
+    additional_context: context.additionalInfo || "none",
     candidates: context.candidates,
     answers: context.answers,
     ranking,

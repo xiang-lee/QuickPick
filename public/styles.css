@@ -188,6 +188,17 @@ input[type="text"] {
   font-family: "Sora", sans-serif;
 }
 
+textarea {
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(18, 20, 18, 0.18);
+  font-size: 1rem;
+  background: #fff;
+  font-family: "Sora", sans-serif;
+  resize: vertical;
+  min-height: 120px;
+}
+
 .candidate-list {
   display: grid;
   gap: 12px;
@@ -286,6 +297,22 @@ button.small {
   display: grid;
   gap: 12px;
   margin-top: 18px;
+}
+
+.loading-bar {
+  height: 10px;
+  background: rgba(18, 20, 18, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.loading-bar span {
+  display: block;
+  height: 100%;
+  width: 40%;
+  background: linear-gradient(90deg, rgba(43, 179, 167, 0.1), var(--teal), var(--accent));
+  animation: loadShift 1.4s ease-in-out infinite;
 }
 
 .option-btn {
@@ -417,6 +444,15 @@ button.small {
   100% {
     opacity: 1;
     transform: translateY(0px);
+  }
+}
+
+@keyframes loadShift {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(220%);
   }
 }
 

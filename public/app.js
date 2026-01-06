@@ -1,6 +1,7 @@
 const state = {
   category: "",
   location: "",
+  additionalInfo: "",
   candidates: [],
   answers: [],
   questionCount: 0,
@@ -18,6 +19,7 @@ const state = {
 const elements = {
   inputPanel: document.getElementById("inputPanel"),
   questionPanel: document.getElementById("questionPanel"),
+  extraPanel: document.getElementById("extraPanel"),
   resultPanel: document.getElementById("resultPanel"),
   category: document.getElementById("category"),
   location: document.getElementById("location"),
@@ -42,6 +44,9 @@ const elements = {
   startOver: document.getElementById("startOver"),
   thirdOptionCard: document.getElementById("thirdOptionCard"),
   thirdOption: document.getElementById("thirdOption"),
+  additionalInfo: document.getElementById("additionalInfo"),
+  skipAdditional: document.getElementById("skipAdditional"),
+  submitAdditional: document.getElementById("submitAdditional"),
 };
 
 function initCandidates() {
@@ -85,6 +90,7 @@ function collectCandidates() {
 function showPanel(panel) {
   elements.inputPanel.classList.add("hidden");
   elements.questionPanel.classList.add("hidden");
+  elements.extraPanel.classList.add("hidden");
   elements.resultPanel.classList.add("hidden");
   panel.classList.remove("hidden");
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -132,10 +138,18 @@ async function startSession() {
 
 function setQuestionLoading(message) {
   elements.questionText.textContent = message;
-  elements.infoGain.textContent = "";
+  elements.infoGain.textContent = "Building a tailored set of high-signal questions.";
   elements.options.innerHTML = "";
-  elements.options.appendChild(createLoading());
-  elements.progress.textContent = "Preparing...";
+  elements.options.appendChild(createLoadingBar());
+  elements.progress.textContent = "This takes a few seconds once.";
+}
+
+function createLoadingBar() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "loading-bar";
+  const bar = document.createElement("span");
+  wrapper.appendChild(bar);
+  return wrapper;
 }
 
 function initScores(baseScores, candidates) {
@@ -191,6 +205,7 @@ async function fetchResult() {
     body: JSON.stringify({
       category: state.category,
       location: state.location,
+      additionalInfo: state.additionalInfo,
       candidates: state.candidates,
       answers: state.answers,
       scores: state.scores,
@@ -248,7 +263,7 @@ function handleAnswer(option) {
   updateConfidence();
 
   if (state.questionCount >= state.totalQuestions) {
-    fetchResult().catch(showError);
+    showPanel(elements.extraPanel);
     return;
   }
 
@@ -424,9 +439,20 @@ function showError(error) {
   elements.options.appendChild(message);
 }
 
+function submitAdditionalInfo(skip) {
+  if (skip) {
+    state.additionalInfo = "";
+  } else {
+    state.additionalInfo = elements.additionalInfo.value.trim();
+  }
+  showPanel(elements.questionPanel);
+  fetchResult().catch(showError);
+}
+
 function resetFlow() {
   state.category = "";
   state.location = "";
+  state.additionalInfo = "";
   state.candidates = [];
   state.answers = [];
   state.questionCount = 0;
@@ -439,6 +465,7 @@ function resetFlow() {
   state.confidence = 0;
   elements.category.value = "";
   elements.location.value = "";
+  elements.additionalInfo.value = "";
   elements.formError.textContent = "";
   initCandidates();
   showPanel(elements.inputPanel);
@@ -453,6 +480,7 @@ function startFlow() {
 
   state.category = elements.category.value.trim();
   state.location = elements.location.value.trim();
+  state.additionalInfo = "";
   state.candidates = candidates;
   state.answers = [];
   state.questionCount = 0;
@@ -480,3 +508,11 @@ elements.addCandidate.addEventListener("click", () => {
 elements.startFlow.addEventListener("click", startFlow);
 
 elements.startOver.addEventListener("click", resetFlow);
+
+elements.skipAdditional.addEventListener("click", () => {
+  submitAdditionalInfo(true);
+});
+
+elements.submitAdditional.addEventListener("click", () => {
+  submitAdditionalInfo(false);
+});

@@ -42,7 +42,7 @@
             <input id="category" type="text" placeholder="e.g. compact SUV, air purifier" />
           </div>
           <div class="form-row">
-            <label for="location">Location (for price & availability)</label>
+            <label for="location">Location (optional, for price & availability)</label>
             <input id="location" type="text" placeholder="e.g. Shanghai, Bay Area, Berlin" />
           </div>
           <div class="form-row">
@@ -133,6 +133,27 @@
 
           <div class="form-actions">
             <button class="secondary" id="startOver">Start over</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="extraPanel">
+        <div class="panel-header compact">
+          <h2>Anything else to add?</h2>
+          <p>Optional context can refine the final recommendation.</p>
+        </div>
+        <div class="panel-body">
+          <div class="form-row">
+            <label for="additionalInfo">Textbook (optional)</label>
+            <textarea
+              id="additionalInfo"
+              placeholder="Add constraints, price ceilings, brand preferences, or must-have details."
+              rows="4"
+            ></textarea>
+          </div>
+          <div class="form-actions">
+            <button class="secondary" id="skipAdditional">Skip</button>
+            <button class="primary" id="submitAdditional">Generate recommendation</button>
           </div>
         </div>
       </section>
