@@ -93,6 +93,18 @@ body {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.language-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.language-switch label {
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 .pill {

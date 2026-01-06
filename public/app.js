@@ -2,7 +2,7 @@ const state = {
   category: "",
   location: "",
   additionalInfo: "",
-  language: "zh",
+  language: "en",
   candidates: [],
   answers: [],
   questionCount: 0,
@@ -160,12 +160,12 @@ const UI_STRINGS = {
 };
 
 function t(key) {
-  const lang = UI_COPY[state.language] ? state.language : "zh";
+  const lang = UI_COPY[state.language] ? state.language : "en";
   return UI_COPY[lang][key] || "";
 }
 
 function applyLanguage() {
-  const lang = UI_STRINGS[state.language] ? state.language : "zh";
+  const lang = UI_STRINGS[state.language] ? state.language : "en";
   const dict = UI_STRINGS[lang];
   document.title = dict.page_title;
 
@@ -599,7 +599,7 @@ function resetFlow() {
   state.category = "";
   state.location = "";
   state.additionalInfo = "";
-  state.language = "zh";
+  state.language = "en";
   state.candidates = [];
   state.answers = [];
   state.questionCount = 0;
@@ -611,7 +611,7 @@ function resetFlow() {
   state.ranking = [];
   state.confidence = 0;
   elements.category.value = "";
-  elements.language.value = "zh";
+  elements.language.value = "en";
   elements.location.value = "";
   elements.additionalInfo.value = "";
   elements.formError.textContent = "";
@@ -628,7 +628,7 @@ function startFlow() {
   }
 
   state.category = elements.category.value.trim();
-  state.language = elements.language.value || "zh";
+  state.language = elements.language.value || "en";
   state.location = elements.location.value.trim();
   state.additionalInfo = "";
   state.candidates = candidates;
