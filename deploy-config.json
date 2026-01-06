@@ -1,0 +1,9 @@
+{
+  "repo_url": "https://github.com/xiang-lee/QuickPick",
+  "service_name": "quickpick-xli",
+  "branch": "main",
+  "port": 3000,
+  "env_vars": {
+    "NODE_ENV": "production"
+  }
+}
