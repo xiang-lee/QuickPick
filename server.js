@@ -20,6 +20,7 @@ app.get("/api/health", (req, res) => {
 app.post("/api/session", async (req, res) => {
   const payload = req.body || {};
   const category = sanitizeText(payload.category || "");
+  const location = sanitizeText(payload.location || "");
   const candidates = normalizeCandidates(payload.candidates || []);
   const minQuestions = Number.isInteger(payload.minQuestions) ? payload.minQuestions : 3;
   const maxQuestions = Number.isInteger(payload.maxQuestions) ? payload.maxQuestions : 10;
@@ -32,6 +33,7 @@ app.post("/api/session", async (req, res) => {
 
   const context = {
     category: category || "general consumer product",
+    location,
     candidates,
     minQuestions,
     maxQuestions,
@@ -58,6 +60,7 @@ app.post("/api/session", async (req, res) => {
 app.post("/api/next", async (req, res) => {
   const payload = req.body || {};
   const category = sanitizeText(payload.category || "");
+  const location = sanitizeText(payload.location || "");
   const candidates = normalizeCandidates(payload.candidates || []);
   const answers = Array.isArray(payload.answers) ? payload.answers.map(normalizeAnswer) : [];
   const previousQuestions = Array.isArray(payload.previousQuestions)
@@ -77,6 +80,7 @@ app.post("/api/next", async (req, res) => {
 
   const context = {
     category: category || "general consumer product",
+    location,
     candidates,
     answers,
     previousQuestions,
@@ -106,6 +110,7 @@ app.post("/api/next", async (req, res) => {
 app.post("/api/result", async (req, res) => {
   const payload = req.body || {};
   const category = sanitizeText(payload.category || "");
+  const location = sanitizeText(payload.location || "");
   const candidates = normalizeCandidates(payload.candidates || []);
   const answers = Array.isArray(payload.answers) ? payload.answers.map(normalizeAnswer) : [];
   const scores = normalizeScores(payload.scores || {}, candidates);
@@ -118,6 +123,7 @@ app.post("/api/result", async (req, res) => {
 
   const context = {
     category: category || "general consumer product",
+    location,
     candidates,
     answers,
   };
@@ -188,6 +194,7 @@ async function callAiPlan(context) {
     "Return JSON only. No markdown or commentary.",
     "Create a full question plan so the UI can ask without waiting.",
     "Use candidate names exactly as provided.",
+    "Use the user's location to tune price/availability tradeoffs.",
     "Each option must include impact_scores for every candidate as integers between -12 and 12.",
     "Questions must be short, scenario-based, and high impact.",
     "Provide between minQuestions and maxQuestions, prefer 5-7 if allowed.",
@@ -196,6 +203,7 @@ async function callAiPlan(context) {
 
   const userPrompt = JSON.stringify({
     category: context.category,
+    location: context.location || "unspecified",
     candidates: context.candidates,
     minQuestions: context.minQuestions,
     maxQuestions: context.maxQuestions,
@@ -235,12 +243,14 @@ async function callAiResult(context, ranking) {
     "You are QuickPick, an explainable recommendation engine.",
     "Return JSON only. No markdown or commentary.",
     "Use the provided ranking order. Do not change the order.",
+    "Use the user's location to explain price or availability differences.",
     "Explain using short, scenario-based language without jargon.",
     "Keep all text short: <= 18 words per sentence.",
   ].join("\n");
 
   const userPrompt = JSON.stringify({
     category: context.category,
+    location: context.location || "unspecified",
     candidates: context.candidates,
     answers: context.answers,
     ranking,
@@ -366,12 +376,14 @@ async function callAiDecision(context) {
     "- Provide tradeoff_map with 3 to 6 dimensions.",
     "- Provide 2 to 4 counterfactual toggles with alternative ranking.",
     "- If none fit, return a third_option suggestion with why and criteria.",
+    "- Use the user's location to tune price/availability tradeoffs.",
     "- Keep all text short: <= 18 words per sentence; avoid extra clauses.",
     "Output JSON only. No markdown.",
   ].join("\n");
 
   const userPrompt = JSON.stringify({
     category: context.category,
+    location: context.location || "unspecified",
     candidates: context.candidates,
     answers: context.answers,
     previousQuestions: context.previousQuestions,

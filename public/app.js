@@ -1,5 +1,6 @@
 const state = {
   category: "",
+  location: "",
   candidates: [],
   answers: [],
   questionCount: 0,
@@ -19,6 +20,7 @@ const elements = {
   questionPanel: document.getElementById("questionPanel"),
   resultPanel: document.getElementById("resultPanel"),
   category: document.getElementById("category"),
+  location: document.getElementById("location"),
   candidateList: document.getElementById("candidateList"),
   addCandidate: document.getElementById("addCandidate"),
   startFlow: document.getElementById("startFlow"),
@@ -93,6 +95,7 @@ async function startSession() {
 
   const payload = {
     category: state.category,
+    location: state.location,
     candidates: state.candidates,
     minQuestions: state.minQuestions,
     maxQuestions: state.maxQuestions,
@@ -187,6 +190,7 @@ async function fetchResult() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       category: state.category,
+      location: state.location,
       candidates: state.candidates,
       answers: state.answers,
       scores: state.scores,
@@ -422,6 +426,7 @@ function showError(error) {
 
 function resetFlow() {
   state.category = "";
+  state.location = "";
   state.candidates = [];
   state.answers = [];
   state.questionCount = 0;
@@ -433,6 +438,7 @@ function resetFlow() {
   state.ranking = [];
   state.confidence = 0;
   elements.category.value = "";
+  elements.location.value = "";
   elements.formError.textContent = "";
   initCandidates();
   showPanel(elements.inputPanel);
@@ -446,6 +452,7 @@ function startFlow() {
   }
 
   state.category = elements.category.value.trim();
+  state.location = elements.location.value.trim();
   state.candidates = candidates;
   state.answers = [];
   state.questionCount = 0;
