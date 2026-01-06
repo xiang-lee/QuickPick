@@ -61,6 +61,8 @@ const UI_COPY = {
     questionLabel: "第 {current} / {total} 题",
     answeredLabel: "已回答 {current} / {total}",
     thinking: "思考中...",
+    error_candidates_count: "请输入 3 到 6 个候选。",
+    error_max_candidates: "最多 6 个候选。",
   },
   en: {
     buildingTitle: "Building your question set...",
@@ -71,12 +73,120 @@ const UI_COPY = {
     questionLabel: "Question {current} of {total}",
     answeredLabel: "Answered {current} of {total}",
     thinking: "Thinking...",
+    error_candidates_count: "Please enter 3 to 6 candidates.",
+    error_max_candidates: "Maximum 6 candidates.",
+  },
+};
+
+const UI_STRINGS = {
+  zh: {
+    page_title: "QuickPick - 快速做决定",
+    kicker: "一轮完成决策",
+    headline: "输入候选清单，剩下交给我们。",
+    lead: "不用看参数，不用懂术语。几个关键问题就能分出最适合的方案。",
+    category_label: "品类（可选）",
+    category_placeholder: "例如：紧凑型SUV、空气净化器",
+    language_label: "语言",
+    language_zh: "中文",
+    language_en: "英文",
+    location_label: "所在地区（可选，用于价格/可用性）",
+    location_placeholder: "例如：上海、湾区、柏林",
+    candidate_label: "候选清单",
+    candidate_hint: "3 到 6 个",
+    add_candidate: "添加候选",
+    mini_note: "问题一次生成，答题不再等待。",
+    start_questions: "开始答题",
+    question_header: "快速问答",
+    question_sub: "每次选择都会实时更新排序。",
+    ranking_header: "实时排序",
+    ranking_sub: "每题即时更新",
+    result_header: "推荐结果",
+    result_sub: "可解释、可验证、可执行。",
+    top_pick: "最佳推荐",
+    ranking_title: "排序",
+    third_option: "第三方案建议",
+    key_reasons: "关键理由",
+    tradeoff_map: "权衡地图",
+    counterfactuals: "反事实开关",
+    next_actions: "下一步行动",
+    start_over: "重新开始",
+    extra_header: "还要补充吗？",
+    extra_sub: "可选信息将用于优化最终推荐。",
+    extra_label: "Textbook（可选）",
+    extra_placeholder: "可输入预算、品牌偏好、必备功能、禁忌点等。",
+    skip: "跳过",
+    generate: "生成推荐",
+    footer: "QuickPick 把对比疲劳变成清晰决策。",
+  },
+  en: {
+    page_title: "QuickPick - Fast Shortlist Decisions",
+    kicker: "Make the call in one pass",
+    headline: "Drop your shortlist. We do the hard part.",
+    lead: "No specs. No jargon. A few high-signal questions flip the ranking.",
+    category_label: "Category (optional)",
+    category_placeholder: "e.g. compact SUV, air purifier",
+    language_label: "Language",
+    language_zh: "Chinese",
+    language_en: "English",
+    location_label: "Location (optional, for price & availability)",
+    location_placeholder: "e.g. Shanghai, Bay Area, Berlin",
+    candidate_label: "Candidate list",
+    candidate_hint: "3 to 6",
+    add_candidate: "Add candidate",
+    mini_note: "Questions generated once. Zero waiting between answers.",
+    start_questions: "Start questions",
+    question_header: "Rapid questions",
+    question_sub: "Every answer updates the live ranking instantly.",
+    ranking_header: "Live ranking",
+    ranking_sub: "Updates after every answer",
+    result_header: "Recommendation",
+    result_sub: "Explainable, testable, and ready to act on.",
+    top_pick: "Top pick",
+    ranking_title: "Ranking",
+    third_option: "Third option suggestion",
+    key_reasons: "Key reasons",
+    tradeoff_map: "Tradeoff map",
+    counterfactuals: "Counterfactual toggles",
+    next_actions: "Next best actions",
+    start_over: "Start over",
+    extra_header: "Anything else to add?",
+    extra_sub: "Optional context can refine the final recommendation.",
+    extra_label: "Textbook (optional)",
+    extra_placeholder: "Add constraints, price ceilings, brand preferences, or must-have details.",
+    skip: "Skip",
+    generate: "Generate recommendation",
+    footer: "QuickPick turns comparison fatigue into clear decisions.",
   },
 };
 
 function t(key) {
   const lang = UI_COPY[state.language] ? state.language : "zh";
   return UI_COPY[lang][key] || "";
+}
+
+function applyLanguage() {
+  const lang = UI_STRINGS[state.language] ? state.language : "zh";
+  const dict = UI_STRINGS[lang];
+  document.title = dict.page_title;
+
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.dataset.i18n;
+    if (dict[key]) {
+      el.textContent = dict[key];
+    }
+  });
+
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    const key = el.dataset.i18nPlaceholder;
+    if (dict[key]) {
+      el.placeholder = dict[key];
+    }
+  });
+
+  updateConfidence();
+  if (state.currentQuestion) {
+    renderQuestion(state.currentQuestion);
+  }
 }
 
 function initCandidates() {
@@ -505,6 +615,7 @@ function resetFlow() {
   elements.location.value = "";
   elements.additionalInfo.value = "";
   elements.formError.textContent = "";
+  elements.language.disabled = false;
   initCandidates();
   showPanel(elements.inputPanel);
 }
@@ -512,7 +623,7 @@ function resetFlow() {
 function startFlow() {
   const candidates = collectCandidates();
   if (candidates.length < 3 || candidates.length > 6) {
-    elements.formError.textContent = "Please enter 3 to 6 candidates.";
+    elements.formError.textContent = t("error_candidates_count");
     return;
   }
 
@@ -529,16 +640,18 @@ function startFlow() {
   state.plan = null;
 
   elements.formError.textContent = "";
+  elements.language.disabled = true;
   showPanel(elements.questionPanel);
   startSession().catch(showError);
 }
 
 initCandidates();
+applyLanguage();
 
 elements.addCandidate.addEventListener("click", () => {
   const count = elements.candidateList.querySelectorAll("input").length;
   if (count >= 6) {
-    elements.formError.textContent = "Maximum 6 candidates.";
+    elements.formError.textContent = t("error_max_candidates");
     return;
   }
   addCandidateInput("");
@@ -554,4 +667,12 @@ elements.skipAdditional.addEventListener("click", () => {
 
 elements.submitAdditional.addEventListener("click", () => {
   submitAdditionalInfo(false);
+});
+
+elements.language.addEventListener("change", () => {
+  if (elements.language.disabled) {
+    return;
+  }
+  state.language = elements.language.value || "zh";
+  applyLanguage();
 });

@@ -30,48 +30,64 @@
     <main class="app">
       <section class="panel" id="inputPanel">
         <div class="panel-header">
-          <p class="kicker">Make the call in one pass</p>
-          <h1>Drop your shortlist. We do the hard part.</h1>
-          <p class="lead">
+          <p class="kicker" data-i18n="kicker">Make the call in one pass</p>
+          <h1 data-i18n="headline">Drop your shortlist. We do the hard part.</h1>
+          <p class="lead" data-i18n="lead">
             No specs. No jargon. Just a few high-signal questions that flip the ranking.
           </p>
         </div>
         <div class="panel-body">
           <div class="form-row">
-            <label for="category">Category (optional)</label>
-            <input id="category" type="text" placeholder="e.g. compact SUV, air purifier" />
+            <label for="category" data-i18n="category_label">Category (optional)</label>
+            <input
+              id="category"
+              type="text"
+              placeholder="e.g. compact SUV, air purifier"
+              data-i18n-placeholder="category_placeholder"
+            />
           </div>
           <div class="form-row">
-            <label for="language">Language / 语言</label>
+            <label for="language" data-i18n="language_label">Language / 语言</label>
             <select id="language">
-              <option value="zh" selected>中文</option>
-              <option value="en">English</option>
+              <option value="zh" selected data-i18n="language_zh">中文</option>
+              <option value="en" data-i18n="language_en">English</option>
             </select>
           </div>
           <div class="form-row">
-            <label for="location">Location (optional, for price & availability)</label>
-            <input id="location" type="text" placeholder="e.g. Shanghai, Bay Area, Berlin" />
+            <label for="location" data-i18n="location_label">
+              Location (optional, for price & availability)
+            </label>
+            <input
+              id="location"
+              type="text"
+              placeholder="e.g. Shanghai, Bay Area, Berlin"
+              data-i18n-placeholder="location_placeholder"
+            />
           </div>
           <div class="form-row">
             <div class="row-head">
-              <label>Candidate list</label>
-              <span class="hint">3 to 6</span>
+              <label data-i18n="candidate_label">Candidate list</label>
+              <span class="hint" data-i18n="candidate_hint">3 to 6</span>
             </div>
             <div id="candidateList" class="candidate-list"></div>
-            <button class="secondary small" id="addCandidate">Add candidate</button>
+            <button class="secondary small" id="addCandidate" data-i18n="add_candidate">
+              Add candidate
+            </button>
           </div>
           <p class="form-error" id="formError"></p>
           <div class="form-actions">
-            <div class="mini-note">Auto-generated questions. Zero waiting between answers.</div>
-            <button class="primary" id="startFlow">Start questions</button>
+            <div class="mini-note" data-i18n="mini_note">
+              Auto-generated questions. Zero waiting between answers.
+            </div>
+            <button class="primary" id="startFlow" data-i18n="start_questions">Start questions</button>
           </div>
         </div>
       </section>
 
       <section class="panel hidden" id="questionPanel">
         <div class="panel-header compact">
-          <h2>Rapid questions</h2>
-          <p>Every answer updates the live ranking instantly.</p>
+          <h2 data-i18n="question_header">Rapid questions</h2>
+          <p data-i18n="question_sub">Every answer updates the live ranking instantly.</p>
         </div>
         <div class="panel-body split">
           <div class="question-card">
@@ -86,8 +102,8 @@
           </div>
           <div class="ranking-card">
             <div class="ranking-header">
-              <h4>Live ranking</h4>
-              <span class="muted">Updates after every answer</span>
+              <h4 data-i18n="ranking_header">Live ranking</h4>
+              <span class="muted" data-i18n="ranking_sub">Updates after every answer</span>
             </div>
             <div id="rankingList" class="ranking-list"></div>
           </div>
@@ -96,78 +112,81 @@
 
       <section class="panel hidden" id="resultPanel">
         <div class="panel-header compact">
-          <h2>Recommendation</h2>
-          <p>Explainable, testable, and ready to act on.</p>
+          <h2 data-i18n="result_header">Recommendation</h2>
+          <p data-i18n="result_sub">Explainable, testable, and ready to act on.</p>
         </div>
         <div class="panel-body">
           <div class="result-grid">
             <div class="result-card" id="topPickCard">
-              <h3>Top pick</h3>
+              <h3 data-i18n="top_pick">Top pick</h3>
               <div id="topPick"></div>
             </div>
             <div class="result-card">
-              <h3>Ranking</h3>
+              <h3 data-i18n="ranking_title">Ranking</h3>
               <div id="finalRanking"></div>
             </div>
           </div>
 
           <div class="result-card" id="thirdOptionCard">
-            <h3>Third option suggestion</h3>
+            <h3 data-i18n="third_option">Third option suggestion</h3>
             <div id="thirdOption"></div>
           </div>
 
           <div class="result-grid">
             <div class="result-card">
-              <h3>Key reasons</h3>
+              <h3 data-i18n="key_reasons">Key reasons</h3>
               <ul id="keyReasons" class="bullets"></ul>
             </div>
             <div class="result-card">
-              <h3>Tradeoff map</h3>
+              <h3 data-i18n="tradeoff_map">Tradeoff map</h3>
               <div id="tradeoffMap" class="tradeoff-grid"></div>
             </div>
           </div>
 
           <div class="result-card">
-            <h3>Counterfactual toggles</h3>
+            <h3 data-i18n="counterfactuals">Counterfactual toggles</h3>
             <div id="counterfactuals" class="toggle-list"></div>
             <div id="counterfactualRanking" class="ranking-list"></div>
           </div>
 
           <div class="result-card">
-            <h3>Next best actions</h3>
+            <h3 data-i18n="next_actions">Next best actions</h3>
             <ul id="actions" class="bullets"></ul>
           </div>
 
           <div class="form-actions">
-            <button class="secondary" id="startOver">Start over</button>
+            <button class="secondary" id="startOver" data-i18n="start_over">Start over</button>
           </div>
         </div>
       </section>
 
       <section class="panel hidden" id="extraPanel">
         <div class="panel-header compact">
-          <h2>Anything else to add?</h2>
-          <p>Optional context can refine the final recommendation.</p>
+          <h2 data-i18n="extra_header">Anything else to add?</h2>
+          <p data-i18n="extra_sub">Optional context can refine the final recommendation.</p>
         </div>
         <div class="panel-body">
           <div class="form-row">
-            <label for="additionalInfo">Textbook (optional)</label>
+            <label for="additionalInfo" data-i18n="extra_label">Textbook (optional)</label>
             <textarea
               id="additionalInfo"
               placeholder="Add constraints, price ceilings, brand preferences, or must-have details."
+              data-i18n-placeholder="extra_placeholder"
               rows="4"
             ></textarea>
           </div>
           <div class="form-actions">
-            <button class="secondary" id="skipAdditional">Skip</button>
-            <button class="primary" id="submitAdditional">Generate recommendation</button>
+            <button class="secondary" id="skipAdditional" data-i18n="skip">Skip</button>
+            <button class="primary" id="submitAdditional" data-i18n="generate">
+              Generate recommendation
+            </button>
           </div>
         </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <div>QuickPick turns comparison fatigue into clear decisions.</div>
+      <div data-i18n="footer">QuickPick turns comparison fatigue into clear decisions.</div>
     </footer>
 
     <script src="app.js"></script>
