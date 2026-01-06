@@ -21,6 +21,7 @@ app.post("/api/session", async (req, res) => {
   const payload = req.body || {};
   const category = sanitizeText(payload.category || "");
   const location = sanitizeText(payload.location || "");
+  const language = normalizeLanguage(payload.language);
   const candidates = normalizeCandidates(payload.candidates || []);
   const minQuestions = Number.isInteger(payload.minQuestions) ? payload.minQuestions : 3;
   const maxQuestions = Number.isInteger(payload.maxQuestions) ? payload.maxQuestions : 10;
@@ -34,6 +35,7 @@ app.post("/api/session", async (req, res) => {
   const context = {
     category: category || "general consumer product",
     location,
+    language,
     candidates,
     minQuestions,
     maxQuestions,
@@ -61,6 +63,7 @@ app.post("/api/next", async (req, res) => {
   const payload = req.body || {};
   const category = sanitizeText(payload.category || "");
   const location = sanitizeText(payload.location || "");
+  const language = normalizeLanguage(payload.language);
   const candidates = normalizeCandidates(payload.candidates || []);
   const answers = Array.isArray(payload.answers) ? payload.answers.map(normalizeAnswer) : [];
   const previousQuestions = Array.isArray(payload.previousQuestions)
@@ -81,6 +84,7 @@ app.post("/api/next", async (req, res) => {
   const context = {
     category: category || "general consumer product",
     location,
+    language,
     candidates,
     answers,
     previousQuestions,
@@ -112,6 +116,7 @@ app.post("/api/result", async (req, res) => {
   const category = sanitizeText(payload.category || "");
   const location = sanitizeText(payload.location || "");
   const additionalInfo = sanitizeText(payload.additionalInfo || "");
+  const language = normalizeLanguage(payload.language);
   const candidates = normalizeCandidates(payload.candidates || []);
   const answers = Array.isArray(payload.answers) ? payload.answers.map(normalizeAnswer) : [];
   const scores = normalizeScores(payload.scores || {}, candidates);
@@ -126,6 +131,7 @@ app.post("/api/result", async (req, res) => {
     category: category || "general consumer product",
     location,
     additionalInfo,
+    language,
     candidates,
     answers,
     scores,
@@ -156,6 +162,21 @@ function sanitizeText(value) {
     return "";
   }
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normalizeLanguage(value) {
+  const text = sanitizeText(String(value || "")).toLowerCase();
+  if (text.startsWith("en")) {
+    return "en";
+  }
+  if (text.startsWith("zh")) {
+    return "zh";
+  }
+  return "zh";
+}
+
+function getLanguageLabel(language) {
+  return language === "zh" ? "Simplified Chinese" : "English";
 }
 
 function normalizeCandidates(list) {
@@ -192,12 +213,14 @@ function normalizeAnswer(answer) {
 }
 
 async function callAiPlan(context) {
+  const languageLabel = getLanguageLabel(context.language);
   const systemPrompt = [
     "You are QuickPick Plan Builder.",
     "Return JSON only. No markdown or commentary.",
     "Create a full question plan so the UI can ask without waiting.",
     "Use candidate names exactly as provided.",
     "Use the user's location to tune price/availability tradeoffs.",
+    `All user-facing text must be in ${languageLabel}.`,
     "Each option must include impact_scores for every candidate as integers between -12 and 12.",
     "Questions must be short, scenario-based, and high impact.",
     "Provide between minQuestions and maxQuestions, prefer 5-7 if allowed.",
@@ -207,6 +230,7 @@ async function callAiPlan(context) {
   const userPrompt = JSON.stringify({
     category: context.category,
     location: context.location || "unspecified",
+    language: languageLabel,
     candidates: context.candidates,
     minQuestions: context.minQuestions,
     maxQuestions: context.maxQuestions,
@@ -242,12 +266,14 @@ async function callAiPlan(context) {
 }
 
 async function callAiResult(context) {
+  const languageLabel = getLanguageLabel(context.language);
   const systemPrompt = [
     "You are QuickPick, an explainable recommendation engine.",
     "Return JSON only. No markdown or commentary.",
     "Use the user's location to explain price or availability differences.",
     "Use the user's additional context if provided.",
     "Use baseline_scores as the starting point and adjust if needed.",
+    `All user-facing text must be in ${languageLabel}.`,
     "Explain using short, scenario-based language without jargon.",
     "Keep all text short: <= 18 words per sentence.",
   ].join("\n");
@@ -256,6 +282,7 @@ async function callAiResult(context) {
     category: context.category,
     location: context.location || "unspecified",
     additional_context: context.additionalInfo || "none",
+    language: languageLabel,
     baseline_scores: context.candidates.map((name) => ({
       name,
       score: clampNumber(context.scores[name], 0, 100, 50),
@@ -380,6 +407,7 @@ async function callAiJson({ systemPrompt, userPrompt, maxTokens }) {
 
 async function callAiDecision(context) {
   const debug = process.env.DEBUG_AI === "1";
+  const languageLabel = getLanguageLabel(context.language);
   const systemPrompt = [
     "You are QuickPick, a decision engine for consumer product shortlists.",
     "Goal: ask one high impact question at a time, update ranking, and stop once confident.",
@@ -392,6 +420,7 @@ async function callAiDecision(context) {
     "- Provide 2 to 4 counterfactual toggles with alternative ranking.",
     "- If none fit, return a third_option suggestion with why and criteria.",
     "- Use the user's location to tune price/availability tradeoffs.",
+    `- All user-facing text must be in ${languageLabel}.`,
     "- Keep all text short: <= 18 words per sentence; avoid extra clauses.",
     "Output JSON only. No markdown.",
   ].join("\n");
@@ -399,6 +428,7 @@ async function callAiDecision(context) {
   const userPrompt = JSON.stringify({
     category: context.category,
     location: context.location || "unspecified",
+    language: languageLabel,
     candidates: context.candidates,
     answers: context.answers,
     previousQuestions: context.previousQuestions,
@@ -604,8 +634,8 @@ function normalizeAiOutput(aiData, context) {
     question,
     ranking: normalizedRanking,
     key_reasons: normalizeStringList(aiData.key_reasons, 4),
-    tradeoff_map: normalizeTradeoffs(aiData.tradeoff_map, context.candidates),
-    counterfactuals: normalizeCounterfactuals(aiData.counterfactuals, context.candidates),
+    tradeoff_map: normalizeTradeoffs(aiData.tradeoff_map, context.candidates, context.language),
+    counterfactuals: normalizeCounterfactuals(aiData.counterfactuals, context.candidates, context.language),
     actions: normalizeStringList(aiData.actions, 5),
     third_option: normalizeThirdOption(aiData.third_option),
   };
@@ -641,56 +671,44 @@ function normalizeResultOutput(aiData, context, fallbackRanking) {
     question: null,
     ranking,
     key_reasons: normalizeStringList(aiData.key_reasons, 5),
-    tradeoff_map: normalizeTradeoffs(aiData.tradeoff_map, context.candidates),
-    counterfactuals: normalizeCounterfactuals(aiData.counterfactuals, context.candidates),
+    tradeoff_map: normalizeTradeoffs(aiData.tradeoff_map, context.candidates, context.language),
+    counterfactuals: normalizeCounterfactuals(aiData.counterfactuals, context.candidates, context.language),
     actions: normalizeStringList(aiData.actions, 5),
     third_option: normalizeThirdOption(aiData.third_option),
   };
 }
 
 function buildFallbackResponse(context, meta) {
-  const fallback = getFallbackQuestion(context.questionCount, context.candidates);
+  const fallback = getFallbackQuestion(context.questionCount, context.candidates, context.language);
   const shouldStop = context.questionCount >= context.maxQuestions;
   const ranking = normalizeRanking([], context.candidates);
+  const strings = getLanguageStrings(context.language);
 
   return {
     status: shouldStop ? "final" : "question",
     confidence: 0.45,
     question: shouldStop ? null : fallback,
     ranking,
-    key_reasons: [
-      "Using a fallback path while AI is unavailable.",
-      "We will still narrow choices based on your answers.",
-    ],
-    tradeoff_map: buildFallbackTradeoffs(context.candidates),
-    counterfactuals: buildFallbackCounterfactuals(context.candidates),
-    actions: [
-      "Shortlist the top two and compare hands-on if possible.",
-      "Check warranty length and service coverage in your area.",
-      "Look for bundles or seasonal pricing changes.",
-    ],
+    key_reasons: strings.fallback_reasons,
+    tradeoff_map: buildFallbackTradeoffs(context.candidates, context.language),
+    counterfactuals: buildFallbackCounterfactuals(context.candidates, context.language),
+    actions: strings.fallback_actions,
     third_option: null,
     warning: meta && meta.warning ? meta.warning : undefined,
   };
 }
 
 function buildResultFallback(context, ranking, meta) {
+  const strings = getLanguageStrings(context.language);
   return {
     status: "final",
     confidence: 0.6,
     question: null,
     ranking,
-    key_reasons: [
-      "Using a fallback path while AI is unavailable.",
-      "Ranking is based on your answer impacts.",
-    ],
-    tradeoff_map: buildFallbackTradeoffs(context.candidates),
-    counterfactuals: buildFallbackCounterfactuals(context.candidates),
-    actions: [
-      "Shortlist the top two and compare hands-on if possible.",
-      "Check warranty length and service coverage in your area.",
-      "Look for bundles or seasonal pricing changes.",
-    ],
+    key_reasons: strings.fallback_reasons_result,
+    tradeoff_map: buildFallbackTradeoffs(context.candidates, context.language),
+    counterfactuals: buildFallbackCounterfactuals(context.candidates, context.language),
+    actions: strings.fallback_actions,
     third_option: null,
     warning: meta && meta.warning ? meta.warning : undefined,
   };
@@ -700,7 +718,7 @@ function buildFallbackPlan(context, meta) {
   const questions = [];
   const targetCount = Math.min(context.maxQuestions, Math.max(context.minQuestions, 5));
   for (let i = 0; i < targetCount; i += 1) {
-    const base = getFallbackQuestion(i, context.candidates);
+    const base = getFallbackQuestion(i, context.candidates, context.language);
     questions.push(applyFallbackImpacts(base, context.candidates, i));
   }
   return {
@@ -770,6 +788,60 @@ function normalizeAdjustedScores(list, candidates) {
   return mapped;
 }
 
+function getLanguageStrings(language) {
+  if (language === "zh") {
+    return {
+      fallback_reasons: [
+        "AI 暂不可用，使用默认问答。",
+        "仍会根据你的答案收敛结果。",
+      ],
+      fallback_reasons_result: [
+        "AI 暂不可用，使用默认结果。",
+        "排序基于你的答案影响。",
+      ],
+      fallback_actions: [
+        "优先对比前两名的实际体验。",
+        "确认保修年限与本地售后覆盖。",
+        "关注套餐与促销窗口。",
+      ],
+      tradeoffs: [
+        { dimension: "易用性", why: "默认更容易上手。" },
+        { dimension: "性价比", why: "成本与能力更平衡。" },
+        { dimension: "升级空间", why: "更适合未来扩展。" },
+      ],
+      counterfactuals: [
+        { toggle: "如果预算更紧", change: "性价比更重要。" },
+        { toggle: "如果性能最关键", change: "性能权重更高。" },
+      ],
+    };
+  }
+
+  return {
+    fallback_reasons: [
+      "Using a fallback path while AI is unavailable.",
+      "We will still narrow choices based on your answers.",
+    ],
+    fallback_reasons_result: [
+      "Using a fallback path while AI is unavailable.",
+      "Ranking is based on your answer impacts.",
+    ],
+    fallback_actions: [
+      "Shortlist the top two and compare hands-on if possible.",
+      "Check warranty length and service coverage in your area.",
+      "Look for bundles or seasonal pricing changes.",
+    ],
+    tradeoffs: [
+      { dimension: "simplicity", why: "Straightforward default choice." },
+      { dimension: "value", why: "Balances cost with capability." },
+      { dimension: "upgrade headroom", why: "Leaves room for future needs." },
+    ],
+    counterfactuals: [
+      { toggle: "If budget tightens", change: "The value pick becomes more attractive." },
+      { toggle: "If performance is critical", change: "The most capable option rises to the top." },
+    ],
+  };
+}
+
 function normalizePlan(plan, context) {
   const baseScores = normalizeBaseScores(plan && plan.base_scores, context.candidates);
   const rawQuestions = Array.isArray(plan && plan.questions) ? plan.questions : [];
@@ -780,7 +852,7 @@ function normalizePlan(plan, context) {
   const targetCount = Math.min(context.maxQuestions, Math.max(context.minQuestions, 5));
   while (questions.length < targetCount) {
     const fallback = applyFallbackImpacts(
-      getFallbackQuestion(questions.length, context.candidates),
+      getFallbackQuestion(questions.length, context.candidates, context.language),
       context.candidates,
       questions.length,
     );
@@ -801,7 +873,7 @@ function normalizePlanQuestion(question, context, index) {
   const options = Array.isArray(question.options) ? question.options.slice(0, 5) : [];
   if (options.length < 2) {
     return applyFallbackImpacts(
-      getFallbackQuestion(index, context.candidates),
+      getFallbackQuestion(index, context.candidates, context.language),
       context.candidates,
       index,
     );
@@ -817,7 +889,7 @@ function normalizePlanQuestion(question, context, index) {
 
   if (normalizedOptions.length < 2) {
     return applyFallbackImpacts(
-      getFallbackQuestion(index, context.candidates),
+      getFallbackQuestion(index, context.candidates, context.language),
       context.candidates,
       index,
     );
@@ -884,12 +956,12 @@ function normalizeQuestion(question, context, shouldStop) {
   }
 
   if (!question || typeof question !== "object") {
-    return getFallbackQuestion(context.questionCount, context.candidates);
+    return getFallbackQuestion(context.questionCount, context.candidates, context.language);
   }
 
   const options = Array.isArray(question.options) ? question.options.slice(0, 5) : [];
   if (options.length < 2) {
-    return getFallbackQuestion(context.questionCount, context.candidates);
+    return getFallbackQuestion(context.questionCount, context.candidates, context.language);
   }
 
   return {
@@ -913,9 +985,9 @@ function normalizeStringList(list, maxItems) {
   return list.map((item) => sanitizeText(item)).filter(Boolean).slice(0, maxItems);
 }
 
-function normalizeTradeoffs(list, candidates) {
+function normalizeTradeoffs(list, candidates, language) {
   if (!Array.isArray(list) || list.length === 0) {
-    return buildFallbackTradeoffs(candidates);
+    return buildFallbackTradeoffs(candidates, language);
   }
   return list.map((item) => ({
     dimension: sanitizeText(item.dimension || ""),
@@ -924,9 +996,9 @@ function normalizeTradeoffs(list, candidates) {
   })).filter((item) => item.dimension && item.winner);
 }
 
-function normalizeCounterfactuals(list, candidates) {
+function normalizeCounterfactuals(list, candidates, language) {
   if (!Array.isArray(list) || list.length === 0) {
-    return buildFallbackCounterfactuals(candidates);
+    return buildFallbackCounterfactuals(candidates, language);
   }
   return list.map((item) => ({
     toggle: sanitizeText(item.toggle || ""),
@@ -959,41 +1031,76 @@ function clampNumber(value, min, max, fallback) {
   return Math.min(max, Math.max(min, num));
 }
 
-function getFallbackQuestion(questionCount, candidates) {
-  const fallbackQuestions = [
-    {
-      text: "Where will you use it most?",
-      dimension: "context",
-      info_gain_reason: "Usage context shifts which option fits best.",
-      options: [
-        { label: "Small or quiet spaces", value: "small" },
-        { label: "Shared family space", value: "shared" },
-        { label: "Mixed locations", value: "mixed" },
-        { label: "On the go", value: "mobile" },
-      ],
-    },
-    {
-      text: "What matters most for you?",
-      dimension: "priority",
-      info_gain_reason: "Top priorities re-rank the shortlist quickly.",
-      options: [
-        { label: "Reliability over time", value: "reliability" },
-        { label: "Best overall performance", value: "performance" },
-        { label: "Lowest total cost", value: "cost" },
-        { label: "Ease of use", value: "ease" },
-      ],
-    },
-    {
-      text: "How sensitive are you to size or footprint?",
-      dimension: "size",
-      info_gain_reason: "Space constraints can eliminate candidates fast.",
-      options: [
-        { label: "Needs to be compact", value: "compact" },
-        { label: "Moderate size is fine", value: "medium" },
-        { label: "Size is not a concern", value: "large" },
-      ],
-    },
-  ];
+function getFallbackQuestion(questionCount, candidates, language) {
+  const fallbackQuestions = language === "zh"
+    ? [
+      {
+        text: "你主要在哪些场景使用？",
+        dimension: "使用场景",
+        info_gain_reason: "使用环境会明显改变排序。",
+        options: [
+          { label: "小空间或安静环境", value: "small" },
+          { label: "家庭共享空间", value: "shared" },
+          { label: "多地点混用", value: "mixed" },
+          { label: "经常移动", value: "mobile" },
+        ],
+      },
+      {
+        text: "你最看重什么？",
+        dimension: "核心优先级",
+        info_gain_reason: "优先级会快速改变排序。",
+        options: [
+          { label: "长期可靠性", value: "reliability" },
+          { label: "整体性能", value: "performance" },
+          { label: "总成本最低", value: "cost" },
+          { label: "上手简单", value: "ease" },
+        ],
+      },
+      {
+        text: "对体积或占地有多敏感？",
+        dimension: "空间限制",
+        info_gain_reason: "空间限制能快速淘汰候选。",
+        options: [
+          { label: "必须紧凑", value: "compact" },
+          { label: "中等即可", value: "medium" },
+          { label: "不介意大小", value: "large" },
+        ],
+      },
+    ]
+    : [
+      {
+        text: "Where will you use it most?",
+        dimension: "context",
+        info_gain_reason: "Usage context shifts which option fits best.",
+        options: [
+          { label: "Small or quiet spaces", value: "small" },
+          { label: "Shared family space", value: "shared" },
+          { label: "Mixed locations", value: "mixed" },
+          { label: "On the go", value: "mobile" },
+        ],
+      },
+      {
+        text: "What matters most for you?",
+        dimension: "priority",
+        info_gain_reason: "Top priorities re-rank the shortlist quickly.",
+        options: [
+          { label: "Reliability over time", value: "reliability" },
+          { label: "Best overall performance", value: "performance" },
+          { label: "Lowest total cost", value: "cost" },
+          { label: "Ease of use", value: "ease" },
+        ],
+      },
+      {
+        text: "How sensitive are you to size or footprint?",
+        dimension: "size",
+        info_gain_reason: "Space constraints can eliminate candidates fast.",
+        options: [
+          { label: "Needs to be compact", value: "compact" },
+          { label: "Moderate size is fine", value: "medium" },
+          { label: "Size is not a concern", value: "large" },
+        ],
+      },
+    ];
 
   const pick = fallbackQuestions[questionCount % fallbackQuestions.length];
   return {
@@ -1010,37 +1117,39 @@ function getFallbackQuestion(questionCount, candidates) {
   };
 }
 
-function buildFallbackTradeoffs(candidates) {
+function buildFallbackTradeoffs(candidates, language) {
+  const strings = getLanguageStrings(language).tradeoffs;
   return [
     {
-      dimension: "simplicity",
+      dimension: strings[0].dimension,
       winner: candidates[0] || "",
-      why: "Straightforward default choice.",
+      why: strings[0].why,
     },
     {
-      dimension: "value",
+      dimension: strings[1].dimension,
       winner: candidates[1] || candidates[0] || "",
-      why: "Balances cost with capability.",
+      why: strings[1].why,
     },
     {
-      dimension: "upgrade headroom",
+      dimension: strings[2].dimension,
       winner: candidates[2] || candidates[0] || "",
-      why: "Leaves room for future needs.",
+      why: strings[2].why,
     },
   ].filter((item) => item.winner);
 }
 
-function buildFallbackCounterfactuals(candidates) {
+function buildFallbackCounterfactuals(candidates, language) {
+  const strings = getLanguageStrings(language).counterfactuals;
   return [
     {
-      toggle: "If budget tightens",
-      change: "The value pick becomes more attractive.",
+      toggle: strings[0].toggle,
+      change: strings[0].change,
       new_top: candidates[1] || candidates[0] || "",
       new_ranking: normalizeRanking([], candidates).reverse(),
     },
     {
-      toggle: "If performance is critical",
-      change: "The most capable option rises to the top.",
+      toggle: strings[1].toggle,
+      change: strings[1].change,
       new_top: candidates[0] || "",
       new_ranking: normalizeRanking([], candidates),
     },

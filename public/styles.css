@@ -179,7 +179,8 @@ label {
   font-weight: 600;
 }
 
-input[type="text"] {
+input[type="text"],
+select {
   padding: 12px 16px;
   border-radius: 14px;
   border: 1px solid rgba(18, 20, 18, 0.18);

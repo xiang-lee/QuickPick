@@ -2,6 +2,7 @@ const state = {
   category: "",
   location: "",
   additionalInfo: "",
+  language: "zh",
   candidates: [],
   answers: [],
   questionCount: 0,
@@ -22,6 +23,7 @@ const elements = {
   extraPanel: document.getElementById("extraPanel"),
   resultPanel: document.getElementById("resultPanel"),
   category: document.getElementById("category"),
+  language: document.getElementById("language"),
   location: document.getElementById("location"),
   candidateList: document.getElementById("candidateList"),
   addCandidate: document.getElementById("addCandidate"),
@@ -48,6 +50,34 @@ const elements = {
   skipAdditional: document.getElementById("skipAdditional"),
   submitAdditional: document.getElementById("submitAdditional"),
 };
+
+const UI_COPY = {
+  zh: {
+    buildingTitle: "正在生成问题...",
+    buildingHint: "正在生成一组高信息量问题。",
+    buildingProgress: "通常只需要几秒。",
+    generatingTitle: "正在生成推荐...",
+    confidenceLabel: "置信度",
+    questionLabel: "第 {current} / {total} 题",
+    answeredLabel: "已回答 {current} / {total}",
+    thinking: "思考中...",
+  },
+  en: {
+    buildingTitle: "Building your question set...",
+    buildingHint: "Building a tailored set of high-signal questions.",
+    buildingProgress: "This takes a few seconds once.",
+    generatingTitle: "Generating your recommendation...",
+    confidenceLabel: "Confidence",
+    questionLabel: "Question {current} of {total}",
+    answeredLabel: "Answered {current} of {total}",
+    thinking: "Thinking...",
+  },
+};
+
+function t(key) {
+  const lang = UI_COPY[state.language] ? state.language : "zh";
+  return UI_COPY[lang][key] || "";
+}
 
 function initCandidates() {
   elements.candidateList.innerHTML = "";
@@ -97,11 +127,12 @@ function showPanel(panel) {
 }
 
 async function startSession() {
-  setQuestionLoading("Building your question set...");
+  setQuestionLoading(t("buildingTitle"));
 
   const payload = {
     category: state.category,
     location: state.location,
+    language: state.language,
     candidates: state.candidates,
     minQuestions: state.minQuestions,
     maxQuestions: state.maxQuestions,
@@ -138,10 +169,10 @@ async function startSession() {
 
 function setQuestionLoading(message) {
   elements.questionText.textContent = message;
-  elements.infoGain.textContent = "Building a tailored set of high-signal questions.";
+  elements.infoGain.textContent = t("buildingHint");
   elements.options.innerHTML = "";
   elements.options.appendChild(createLoadingBar());
-  elements.progress.textContent = "This takes a few seconds once.";
+  elements.progress.textContent = t("buildingProgress");
 }
 
 function createLoadingBar() {
@@ -198,13 +229,14 @@ function applyImpactScores(impactScores) {
 }
 
 async function fetchResult() {
-  setQuestionLoading("Generating your recommendation...");
+  setQuestionLoading(t("generatingTitle"));
   const response = await fetch("/api/result", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       category: state.category,
       location: state.location,
+      language: state.language,
       additionalInfo: state.additionalInfo,
       candidates: state.candidates,
       answers: state.answers,
@@ -223,7 +255,9 @@ async function fetchResult() {
 
 function renderQuestion(question) {
   const current = Math.min(state.questionCount + 1, state.totalQuestions || 1);
-  elements.questionIndex.textContent = `Question ${current} of ${state.totalQuestions || 1}`;
+  elements.questionIndex.textContent = t("questionLabel")
+    .replace("{current}", String(current))
+    .replace("{total}", String(state.totalQuestions || 1));
   elements.questionText.textContent = question.text;
   elements.infoGain.textContent = question.info_gain_reason || "";
   elements.options.innerHTML = "";
@@ -237,7 +271,9 @@ function renderQuestion(question) {
     elements.options.appendChild(button);
   });
 
-  elements.progress.textContent = `Answered ${state.questionCount} of ${state.totalQuestions || 1}`;
+  elements.progress.textContent = t("answeredLabel")
+    .replace("{current}", String(state.questionCount))
+    .replace("{total}", String(state.totalQuestions || 1));
 }
 
 function handleAnswer(option) {
@@ -304,7 +340,7 @@ function renderRanking(container, ranking) {
 
 function updateConfidence() {
   const pct = Math.round((state.confidence || 0) * 100);
-  elements.confidence.textContent = `Confidence ${pct}%`;
+  elements.confidence.textContent = `${t("confidenceLabel")} ${pct}%`;
 }
 
 function renderResults(data) {
@@ -427,7 +463,7 @@ function renderCounterfactuals(list) {
 function createLoading() {
   const loading = document.createElement("div");
   loading.className = "muted";
-  loading.textContent = "Thinking...";
+  loading.textContent = t("thinking");
   return loading;
 }
 
@@ -453,6 +489,7 @@ function resetFlow() {
   state.category = "";
   state.location = "";
   state.additionalInfo = "";
+  state.language = "zh";
   state.candidates = [];
   state.answers = [];
   state.questionCount = 0;
@@ -464,6 +501,7 @@ function resetFlow() {
   state.ranking = [];
   state.confidence = 0;
   elements.category.value = "";
+  elements.language.value = "zh";
   elements.location.value = "";
   elements.additionalInfo.value = "";
   elements.formError.textContent = "";
@@ -479,6 +517,7 @@ function startFlow() {
   }
 
   state.category = elements.category.value.trim();
+  state.language = elements.language.value || "zh";
   state.location = elements.location.value.trim();
   state.additionalInfo = "";
   state.candidates = candidates;
