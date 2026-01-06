@@ -15,9 +15,6 @@ const state = {
 };
 
 const elements = {
-  jumpStart: document.getElementById("jumpStart"),
-  heroStart: document.getElementById("heroStart"),
-  heroDemo: document.getElementById("heroDemo"),
   inputPanel: document.getElementById("inputPanel"),
   questionPanel: document.getElementById("questionPanel"),
   resultPanel: document.getElementById("resultPanel"),
@@ -462,23 +459,7 @@ function startFlow() {
   startSession().catch(showError);
 }
 
-function runDemo() {
-  elements.category.value = "Compact SUV";
-  const demo = ["Model X", "Model Y", "Model Z", "Model R"];
-  elements.candidateList.innerHTML = "";
-  demo.forEach((item) => addCandidateInput(item));
-  startFlow();
-}
-
 initCandidates();
-
-[elements.jumpStart, elements.heroStart].forEach((btn) => {
-  btn.addEventListener("click", () => {
-    showPanel(elements.inputPanel);
-  });
-});
-
-elements.heroDemo.addEventListener("click", runDemo);
 
 elements.addCandidate.addEventListener("click", () => {
   const count = elements.candidateList.querySelectorAll("input").length;

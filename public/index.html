@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Serif:wght@300;400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600&family=Sora:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
@@ -18,54 +18,23 @@
     <div class="bg-grid"></div>
 
     <header class="site-header">
-      <div class="brand">QuickPick</div>
-      <div class="tagline">Cut decision fatigue in one sitting</div>
-      <button class="ghost" id="jumpStart">Start now</button>
+      <div class="brand">
+        QuickPick <span class="badge">AI</span>
+      </div>
+      <div class="header-meta">
+        <span class="pill">3-6 candidates</span>
+        <span class="pill">30-90 seconds</span>
+      </div>
     </header>
 
-    <main>
-      <section class="hero" id="top">
-        <div class="hero-copy">
-          <p class="eyebrow">Dynamic shortlist decisions</p>
-          <h1>Stop reading 20 reviews. Answer 5 questions. Pick the right one.</h1>
-          <p class="lead">
-            QuickPick turns a pile of similar products into a fast, explainable recommendation with
-            tradeoffs and counterfactuals.
-          </p>
-          <div class="hero-actions">
-            <button class="primary" id="heroStart">Build my shortlist</button>
-            <button class="secondary" id="heroDemo">See a demo</button>
-          </div>
-          <div class="trust-strip">
-            <span>3 to 6 candidates</span>
-            <span>3 to 10 questions</span>
-            <span>30 to 90 seconds</span>
-          </div>
-        </div>
-        <div class="hero-card">
-          <div class="hero-card-header">Live convergence</div>
-          <div class="mini-rank">
-            <div class="mini-row">
-              <span>Option A</span>
-              <div class="mini-bar" style="--w: 88%"></div>
-            </div>
-            <div class="mini-row">
-              <span>Option B</span>
-              <div class="mini-bar" style="--w: 72%"></div>
-            </div>
-            <div class="mini-row">
-              <span>Option C</span>
-              <div class="mini-bar" style="--w: 64%"></div>
-            </div>
-          </div>
-          <div class="hero-card-footer">Every question shifts the ranking.</div>
-        </div>
-      </section>
-
+    <main class="app">
       <section class="panel" id="inputPanel">
         <div class="panel-header">
-          <h2>Step 1 - Add your candidates</h2>
-          <p>Stay in one category. We will do the rest.</p>
+          <p class="kicker">Make the call in one pass</p>
+          <h1>Drop your shortlist. We do the hard part.</h1>
+          <p class="lead">
+            No specs. No jargon. Just a few high-signal questions that flip the ranking.
+          </p>
         </div>
         <div class="panel-body">
           <div class="form-row">
@@ -73,21 +42,25 @@
             <input id="category" type="text" placeholder="e.g. compact SUV, air purifier" />
           </div>
           <div class="form-row">
-            <label>Candidate list (3 to 6)</label>
+            <div class="row-head">
+              <label>Candidate list</label>
+              <span class="hint">3 to 6</span>
+            </div>
             <div id="candidateList" class="candidate-list"></div>
             <button class="secondary small" id="addCandidate">Add candidate</button>
           </div>
           <p class="form-error" id="formError"></p>
           <div class="form-actions">
+            <div class="mini-note">Auto-generated questions. Zero waiting between answers.</div>
             <button class="primary" id="startFlow">Start questions</button>
           </div>
         </div>
       </section>
 
       <section class="panel hidden" id="questionPanel">
-        <div class="panel-header">
-          <h2>Step 2 - Rapid questions</h2>
-          <p>Each answer updates the live ranking instantly.</p>
+        <div class="panel-header compact">
+          <h2>Rapid questions</h2>
+          <p>Every answer updates the live ranking instantly.</p>
         </div>
         <div class="panel-body split">
           <div class="question-card">
@@ -111,8 +84,8 @@
       </section>
 
       <section class="panel hidden" id="resultPanel">
-        <div class="panel-header">
-          <h2>Step 3 - Recommendation</h2>
+        <div class="panel-header compact">
+          <h2>Recommendation</h2>
           <p>Explainable, testable, and ready to act on.</p>
         </div>
         <div class="panel-body">
@@ -159,31 +132,10 @@
           </div>
         </div>
       </section>
-
-      <section class="panel highlight" id="howPanel">
-        <div class="panel-header">
-          <h2>How QuickPick works</h2>
-          <p>Question selection based on information gain, not product specs.</p>
-        </div>
-        <div class="panel-body how-grid">
-          <div>
-            <h4>Input</h4>
-            <p>Add 3 to 6 candidates. We treat them as a single category and ignore raw specs.</p>
-          </div>
-          <div>
-            <h4>Adaptive questions</h4>
-            <p>We ask scenario based questions that change ranking the most.</p>
-          </div>
-          <div>
-            <h4>Explainable output</h4>
-            <p>See why the top pick wins, where it loses, and what flips the decision.</p>
-          </div>
-        </div>
-      </section>
     </main>
 
     <footer class="site-footer">
-      <div>Built for fast, trustable decisions.</div>
+      <div>QuickPick turns comparison fatigue into clear decisions.</div>
     </footer>
 
     <script src="app.js"></script>
