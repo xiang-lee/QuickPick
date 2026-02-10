@@ -43,6 +43,8 @@ const elements = {
   counterfactuals: document.getElementById("counterfactuals"),
   counterfactualRanking: document.getElementById("counterfactualRanking"),
   actions: document.getElementById("actions"),
+  copyResult: document.getElementById("copyResult"),
+  shareResult: document.getElementById("shareResult"),
   startOver: document.getElementById("startOver"),
   thirdOptionCard: document.getElementById("thirdOptionCard"),
   thirdOption: document.getElementById("thirdOption"),
@@ -110,6 +112,8 @@ const UI_STRINGS = {
     counterfactuals: "反事实开关",
     next_actions: "下一步行动",
     start_over: "重新开始",
+    copy_result: "复制结果",
+    share_result: "分享链接",
     extra_header: "还要补充吗？",
     extra_sub: "可选信息将用于优化最终推荐。",
     extra_label: "Textbook（可选）",
@@ -117,6 +121,8 @@ const UI_STRINGS = {
     skip: "跳过",
     generate: "生成推荐",
     footer: "QuickPick 把对比疲劳变成清晰决策。",
+    copied: "已复制！",
+    link_copied: "链接已复制！",
   },
   en: {
     page_title: "QuickPick - Fast Shortlist Decisions",
@@ -149,6 +155,8 @@ const UI_STRINGS = {
     counterfactuals: "Counterfactual toggles",
     next_actions: "Next best actions",
     start_over: "Start over",
+    copy_result: "Copy",
+    share_result: "Share Link",
     extra_header: "Anything else to add?",
     extra_sub: "Optional context can refine the final recommendation.",
     extra_label: "Textbook (optional)",
@@ -156,6 +164,8 @@ const UI_STRINGS = {
     skip: "Skip",
     generate: "Generate recommendation",
     footer: "QuickPick turns comparison fatigue into clear decisions.",
+    copied: "Copied!",
+    link_copied: "Link copied!",
   },
 };
 
@@ -298,14 +308,16 @@ function initScores(baseScores, candidates) {
   candidates.forEach((name) => {
     scores[name] = 50;
   });
-  baseScores.forEach((item) => {
-    const name = item && item.name ? item.name : "";
-    const match = candidates.find((candidate) => candidate.toLowerCase() === name.toLowerCase());
-    if (!match) {
-      return;
-    }
-    scores[match] = Number(item.score) || 50;
-  });
+  if (baseScores) {
+    baseScores.forEach((item) => {
+      const name = item && item.name ? item.name : "";
+      const match = candidates.find((candidate) => candidate.toLowerCase() === name.toLowerCase());
+      if (!match) {
+        return;
+      }
+      scores[match] = Number(item.score) || 50;
+    });
+  }
   return scores;
 }
 
@@ -338,6 +350,73 @@ function applyImpactScores(impactScores) {
   });
 }
 
+function shareResult() {
+  const payload = {
+    category: state.category,
+    candidates: state.candidates,
+    scores: state.scores,
+    ranking: state.ranking,
+    resultData: state.lastResultData, // Need to store this
+  };
+  const json = JSON.stringify(payload);
+  const base64 = btoa(encodeURIComponent(json));
+  const url = `${window.location.origin}${window.location.pathname}#share=${base64}`;
+
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = elements.shareResult;
+    const originalText = btn.textContent;
+    btn.textContent = t("link_copied");
+    setTimeout(() => {
+      btn.textContent = originalText;
+    }, 2000);
+  });
+}
+
+function copyResultText() {
+  const rankingText = state.ranking
+    .map((item, i) => `${i + 1}. ${item.name} (${item.score}%)`)
+    .join("\n");
+  const topPick = state.ranking[0];
+  const text = `${t("page_title")}\n\n${t("top_pick")}: ${topPick.name}\n${topPick.reason}\n\n${t(
+    "ranking_title"
+  )}:\n${rankingText}`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = elements.copyResult;
+    const originalText = btn.textContent;
+    btn.textContent = t("copied");
+    setTimeout(() => {
+      btn.textContent = originalText;
+    }, 2000);
+  });
+}
+
+function loadStateFromURL() {
+  const hash = window.location.hash;
+  if (!hash.includes("share=")) return;
+
+  try {
+    const base64 = hash.split("share=")[1];
+    const json = decodeURIComponent(atob(base64));
+    const data = JSON.parse(json);
+
+    if (data.category && data.candidates && data.resultData) {
+      state.category = data.category;
+      state.candidates = data.candidates;
+      state.scores = data.scores || {};
+      state.ranking = data.ranking || [];
+      state.lastResultData = data.resultData; // Restore full result data for chart
+
+      // Restore UI to result state
+      showPanel(elements.resultPanel);
+      renderResults(data.resultData);
+      renderTradeoffChart(data.resultData);
+    }
+  } catch (e) {
+    console.error("Failed to load shared state", e);
+  }
+}
+
 async function fetchResult() {
   setQuestionLoading(t("generatingTitle"));
   const response = await fetch("/api/result", {
@@ -359,8 +438,76 @@ async function fetchResult() {
   }
 
   const data = await response.json();
+  state.lastResultData = data; // Store for sharing
   renderResults(data);
+  renderTradeoffChart(data);
   showPanel(elements.resultPanel);
+}
+
+function renderTradeoffChart(data) {
+  const ranking = data.ranking || [];
+  if (ranking.length < 2) return;
+
+  const topTwo = ranking.slice(0, 2);
+  const dimensions = [...new Set((data.tradeoff_map || []).map((item) => item.dimension))];
+
+  if (dimensions.length < 3) return;
+
+  const datasets = topTwo.map((candidate, index) => {
+    // Heuristic: derive dimension scores from tradeoff map winners.
+    // If a candidate wins a dimension, give them a higher score (e.g. 80), else lower (e.g. 40).
+    // This is visual approximation since the backend doesn't return per-dimension numerical scores directly.
+    const dataPoints = dimensions.map((dim) => {
+      const tradeItem = (data.tradeoff_map || []).find((t) => t.dimension === dim);
+      if (!tradeItem) return 50;
+      return tradeItem.winner === candidate.name ? 85 : 45;
+    });
+
+    const color = index === 0 ? "rgba(43, 179, 167, 0.6)" : "rgba(255, 109, 63, 0.6)";
+    const borderColor = index === 0 ? "rgba(43, 179, 167, 1)" : "rgba(255, 109, 63, 1)";
+
+    return {
+      label: candidate.name,
+      data: dataPoints,
+      fill: true,
+      backgroundColor: color,
+      borderColor: borderColor,
+      pointBackgroundColor: borderColor,
+      pointBorderColor: "#fff",
+      pointHoverBackgroundColor: "#fff",
+      pointHoverBorderColor: borderColor,
+    };
+  });
+
+  const ctx = document.getElementById("tradeoffChart").getContext("2d");
+
+  if (window.myRadarChart) {
+    window.myRadarChart.destroy();
+  }
+
+  window.myRadarChart = new Chart(ctx, {
+    type: "radar",
+    data: {
+      labels: dimensions,
+      datasets: datasets,
+    },
+    options: {
+      elements: {
+        line: { borderWidth: 3 },
+      },
+      scales: {
+        r: {
+          angleLines: { display: true },
+          suggestedMin: 0,
+          suggestedMax: 100,
+          ticks: { display: false },
+        },
+      },
+      plugins: {
+        legend: { position: "top" },
+      },
+    },
+  });
 }
 
 function renderQuestion(question) {
@@ -647,6 +794,7 @@ function startFlow() {
 
 initCandidates();
 applyLanguage();
+loadStateFromURL();
 
 elements.addCandidate.addEventListener("click", () => {
   const count = elements.candidateList.querySelectorAll("input").length;
@@ -660,6 +808,9 @@ elements.addCandidate.addEventListener("click", () => {
 elements.startFlow.addEventListener("click", startFlow);
 
 elements.startOver.addEventListener("click", resetFlow);
+
+elements.copyResult.addEventListener("click", copyResultText);
+elements.shareResult.addEventListener("click", shareResult);
 
 elements.skipAdditional.addEventListener("click", () => {
   submitAdditionalInfo(true);

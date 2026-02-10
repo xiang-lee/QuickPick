@@ -139,6 +139,9 @@
             </div>
             <div class="result-card">
               <h3 data-i18n="tradeoff_map">Tradeoff map</h3>
+              <div class="chart-container">
+                <canvas id="tradeoffChart"></canvas>
+              </div>
               <div id="tradeoffMap" class="tradeoff-grid"></div>
             </div>
           </div>
@@ -155,6 +158,8 @@
           </div>
 
           <div class="form-actions">
+            <button class="secondary" id="copyResult" data-i18n="copy_result">Copy</button>
+            <button class="secondary" id="shareResult" data-i18n="share_result">Share Link</button>
             <button class="secondary" id="startOver" data-i18n="start_over">Start over</button>
           </div>
         </div>
@@ -189,6 +194,7 @@
       <div data-i18n="footer">QuickPick turns comparison fatigue into clear decisions.</div>
     </footer>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
